@@ -2,7 +2,8 @@
 
 This script runs a brief integration of the minimal AFES-Venus core,
 records level-0 relative vorticity on the Gaussian grid, and writes
-an mp4 (or gif) visualizing the evolution. The intent is to provide a
+an animated gif (or other format supported by :mod:`imageio` via the
+file extension) visualizing the evolution. The intent is to provide a
 lightweight smoketest and a ready-to-run demo without introducing heavy
 runtime dependencies or large output files.
 """
@@ -43,12 +44,14 @@ def run_example(nsteps: int = 30, seed: int = 0):
 
     # Integrate and record trajectory
     _, traj = timestep.integrate(s0, nsteps=nsteps)
+    traj = jax.tree_util.tree_map(lambda arr: np.array(arr), traj)
     lats, lons, _ = grid.gaussian_grid()
 
     # Collect level-0 vorticity in grid space for each frame
     frames = []
-    for step_state in traj:
-        zeta_grid = spharm.synthesis_spec_to_grid(step_state.zeta[0])
+    for istep in range(traj.zeta.shape[0]):
+        step_zeta = traj.zeta[istep]
+        zeta_grid = spharm.synthesis_spec_to_grid(step_zeta[0])
         frames.append(np.array(zeta_grid))
     return frames, np.array(lats), np.array(lons)
 
@@ -73,14 +76,13 @@ def _render_frame(field: np.ndarray, lats: np.ndarray, lons: np.ndarray, vmax: f
     fig.tight_layout()
 
     fig.canvas.draw()
-    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    image = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    image = np.asarray(fig.canvas.buffer_rgba())[:, :, :3]
     plt.close(fig)
     return image
 
 
-def make_movie(frames: Sequence[np.ndarray], lats: np.ndarray, lons: np.ndarray, path: str = "vort.mp4", fps: int = 10):
-    """Render frames to an mp4 (or gif based on extension).
+def make_movie(frames: Sequence[np.ndarray], lats: np.ndarray, lons: np.ndarray, path: str = "vort.gif", fps: int = 10):
+    """Render frames to an animated image container based on extension.
 
     Parameters
     ----------
@@ -89,7 +91,7 @@ def make_movie(frames: Sequence[np.ndarray], lats: np.ndarray, lons: np.ndarray,
     lats, lons : ndarray
         Grid coordinates in radians (matching frame shapes).
     path : str
-        Output filename; extension controls container (e.g., mp4 or gif).
+        Output filename; extension controls container (e.g., gif or mp4).
     fps : int
         Frames per second for the movie.
     """
@@ -105,7 +107,7 @@ def make_movie(frames: Sequence[np.ndarray], lats: np.ndarray, lons: np.ndarray,
 
 def main():
     frames, lats, lons = run_example(nsteps=40, seed=0)
-    movie_path = make_movie(frames, lats, lons, path="t42l60_vort.mp4", fps=8)
+    movie_path = make_movie(frames, lats, lons, path="t42l60_vort.gif", fps=8)
     print(f"Wrote movie to {movie_path.resolve()}")
 
 
