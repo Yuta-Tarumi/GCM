@@ -1,0 +1,14 @@
+[project]
+name = "afes_venus_jax"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+  "jax[cpu]>=0.4",
+  "numpy>=1.24",
+  "matplotlib>=3.7",
+  "imageio>=2.31"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
