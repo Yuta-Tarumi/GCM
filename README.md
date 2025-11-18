@@ -43,3 +43,15 @@ Pass `--scenario random_noise` to reproduce the previous near-rest example if
 desired. The default `vortex_pair` configuration seeds a balanced pair of
 opposite-signed vortices that yields bounded yet visually interesting output for
 quick smoke tests.
+
+For a longer superrotation showcase that starts from a noisy state, integrates
+for several Venus days, and writes a two-panel animation highlighting the zonal
+wind spin-up:
+
+```bash
+python -m afes_venus_jax.examples.superrotation_demo --nsteps 4000 --sample-interval 40
+```
+
+Adjust `--level-height-km` (default 55 km) to target different layers, and use
+`--equator-band` to control how wide of a latitude band feeds the equatorial
+mean profile.
