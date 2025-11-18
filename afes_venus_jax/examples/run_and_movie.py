@@ -8,8 +8,9 @@ lightweight smoketest and a ready-to-run demo without introducing heavy
 runtime dependencies or large output files.
 """
 from __future__ import annotations
+import argparse
 import pathlib
-from typing import Sequence
+from typing import Literal, Sequence
 
 import imageio.v2 as imageio
 import jax
@@ -20,7 +21,59 @@ import numpy as np
 from .. import config, grid, spharm, state, timestep
 
 
-def run_example(nsteps: int = 30, seed: int = 0):
+def _lon_distance(lon: np.ndarray, center: float) -> np.ndarray:
+    """Compute wrapped longitudinal distance preserving sign."""
+    return np.arctan2(np.sin(lon - center), np.cos(lon - center))
+
+
+def _vortex_pair_state(
+    amplitude: float = 3e-5,
+    half_spacing: float = np.deg2rad(25.0),
+    lon_offset: float = np.deg2rad(60.0),
+    sigma: float = np.deg2rad(12.0),
+):
+    """Return a balanced vortex pair to use as a deterministic test problem."""
+
+    base = state.initial_isothermal()
+    lats, lons, _ = grid.gaussian_grid()
+    lon2d, lat2d = np.meshgrid(np.array(lons), np.array(lats))
+
+    def gaussian(lat_c: float, lon_c: float) -> np.ndarray:
+        return np.exp(
+            -0.5
+            * (
+                ((lat2d - lat_c) / sigma) ** 2
+                + (_lon_distance(lon2d, lon_c) / sigma) ** 2
+            )
+        )
+
+    north = gaussian(half_spacing, -lon_offset)
+    south = gaussian(-half_spacing, lon_offset)
+    zeta_grid = amplitude * (north - south)
+    zeta_spec = spharm.analysis_grid_to_spec(jnp.asarray(zeta_grid))
+    base = base.__class__(
+        zeta=base.zeta.at[0].set(zeta_spec),
+        div=base.div,
+        T=base.T,
+        lnps=base.lnps,
+    )
+    return base
+
+
+def _random_perturbation_state(seed: int) -> state.ModelState:
+    """Return a near-rest state with a reproducible random vorticity perturbation."""
+
+    base = state.initial_isothermal()
+    key = jax.random.PRNGKey(seed)
+    pert = 1e-6 * (jax.random.normal(key, base.zeta.shape) + 1j * 0.0)
+    return state.ModelState(zeta=base.zeta + pert, div=base.div, T=base.T, lnps=base.lnps)
+
+
+def run_example(
+    nsteps: int = 30,
+    seed: int = 0,
+    scenario: Literal["vortex_pair", "random_noise"] = "vortex_pair",
+):
     """Run a short integration and collect level-0 vorticity fields.
 
     Parameters
@@ -36,11 +89,20 @@ def run_example(nsteps: int = 30, seed: int = 0):
         Real-valued arrays with shape (nlat, nlon) for each saved step.
     lats, lons : ndarray
         Grid latitude/longitude arrays in radians.
+    scenario : {"vortex_pair", "random_noise"}
+        Controls the initial state. ``"vortex_pair"`` seeds a balanced pair of
+        opposite-signed vortices that remain bounded while shearing apart,
+        whereas ``"random_noise"`` reproduces the previous behaviour where the
+        isothermal base state is perturbed with small-amplitude noise.
+
     """
-    base = state.initial_isothermal()
-    key = jax.random.PRNGKey(seed)
-    pert = 1e-6 * (jax.random.normal(key, base.zeta.shape) + 1j * 0.0)
-    s0 = state.ModelState(zeta=base.zeta + pert, div=base.div, T=base.T, lnps=base.lnps)
+
+    if scenario == "vortex_pair":
+        s0 = _vortex_pair_state()
+    elif scenario == "random_noise":
+        s0 = _random_perturbation_state(seed)
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}")
 
     # Integrate and record trajectory
     _, traj = timestep.integrate(s0, nsteps=nsteps)
@@ -106,8 +168,21 @@ def make_movie(frames: Sequence[np.ndarray], lats: np.ndarray, lons: np.ndarray,
 
 
 def main():
-    frames, lats, lons = run_example(nsteps=40, seed=0)
-    movie_path = make_movie(frames, lats, lons, path="t42l60_vort.gif", fps=8)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--nsteps", type=int, default=40, help="Number of forward steps to integrate")
+    parser.add_argument("--output", type=str, default="t42l60_vort.gif", help="Filename for the rendered movie")
+    parser.add_argument("--fps", type=int, default=8, help="Frames per second in the output animation")
+    parser.add_argument(
+        "--scenario",
+        choices=["vortex_pair", "random_noise"],
+        default="vortex_pair",
+        help="Initial condition used for the demonstration run",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="Random seed for the 'random_noise' scenario")
+    args = parser.parse_args()
+
+    frames, lats, lons = run_example(nsteps=args.nsteps, seed=args.seed, scenario=args.scenario)
+    movie_path = make_movie(frames, lats, lons, path=args.output, fps=args.fps)
     print(f"Wrote movie to {movie_path.resolve()}")
 
 
