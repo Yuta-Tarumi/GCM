@@ -20,5 +20,10 @@ To generate a short demo movie (vorticity at level 0) and write
 `t42l60_vort.mp4` to the working directory:
 
 ```bash
-python -m afes_venus_jax.examples.run_and_movie
+python -m afes_venus_jax.examples.run_and_movie --scenario vortex_pair
 ```
+
+Pass `--scenario random_noise` to reproduce the previous near-rest example
+if desired. The default `vortex_pair` configuration seeds a balanced pair of
+opposite-signed vortices that yields bounded yet visually interesting output
+for quick smoketests.
