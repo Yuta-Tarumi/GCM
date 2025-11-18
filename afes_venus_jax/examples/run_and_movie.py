@@ -74,6 +74,7 @@ def run_example(
     nsteps: int = 30,
     seed: int = 0,
     scenario: Literal["vortex_pair", "random_noise"] = "vortex_pair",
+    device: jax.Device | None = None,
 ):
     """Run a short integration and collect level-0 vorticity fields.
 
@@ -95,6 +96,10 @@ def run_example(
         opposite-signed vortices that remain bounded while shearing apart,
         whereas ``"random_noise"`` reproduces the previous behaviour where the
         isothermal base state is perturbed with small-amplitude noise.
+    device : jax.Device, optional
+        Explicit device to stage the prognostic variables on before integrating.
+        When ``None`` (default), JAX chooses the fastest available backend,
+        which typically means GPUs will be used automatically when present.
 
     """
 
@@ -104,6 +109,9 @@ def run_example(
         s0 = _random_perturbation_state(seed)
     else:
         raise ValueError(f"Unknown scenario: {scenario}")
+
+    if device is not None:
+        s0 = jax.tree_util.tree_map(lambda arr: jax.device_put(arr, device), s0)
 
     # Integrate and record trajectory
     _, traj = integrators.integrate(s0, nsteps=nsteps, cfg=config.DEFAULT)
