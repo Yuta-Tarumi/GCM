@@ -18,7 +18,8 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .. import config, grid, spharm, state, timestep
+from .. import config, grid, spectral, state
+from ..dynamics import integrators
 
 
 def _lon_distance(lon: np.ndarray, center: float) -> np.ndarray:
@@ -50,7 +51,7 @@ def _vortex_pair_state(
     north = gaussian(half_spacing, -lon_offset)
     south = gaussian(-half_spacing, lon_offset)
     zeta_grid = amplitude * (north - south)
-    zeta_spec = spharm.analysis_grid_to_spec(jnp.asarray(zeta_grid))
+    zeta_spec = spectral.analysis_grid_to_spec(jnp.asarray(zeta_grid))
     base = base.__class__(
         zeta=base.zeta.at[0].set(zeta_spec),
         div=base.div,
@@ -105,7 +106,7 @@ def run_example(
         raise ValueError(f"Unknown scenario: {scenario}")
 
     # Integrate and record trajectory
-    _, traj = timestep.integrate(s0, nsteps=nsteps)
+    _, traj = integrators.integrate(s0, nsteps=nsteps, cfg=config.DEFAULT)
     traj = jax.tree_util.tree_map(lambda arr: np.array(arr), traj)
     lats, lons, _ = grid.gaussian_grid()
 
@@ -113,7 +114,7 @@ def run_example(
     frames = []
     for istep in range(traj.zeta.shape[0]):
         step_zeta = traj.zeta[istep]
-        zeta_grid = spharm.synthesis_spec_to_grid(step_zeta[0])
+        zeta_grid = spectral.synthesis_spec_to_grid(step_zeta[0])
         frames.append(np.array(zeta_grid))
     return frames, np.array(lats), np.array(lons)
 

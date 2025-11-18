@@ -7,7 +7,7 @@ from numpy.polynomial.legendre import leggauss
 from . import config
 
 
-def gaussian_grid(nlat: int = config.nlat, nlon: int = config.nlon):
+def gaussian_grid(nlat: int | None = None, nlon: int | None = None):
     """Construct a Gaussian grid suitable for T42 pseudo-spectral transforms.
 
     Parameters
@@ -24,7 +24,12 @@ def gaussian_grid(nlat: int = config.nlat, nlon: int = config.nlon):
     weights : (nlat,) ndarray
         Gaussian quadrature weights.
     """
-    # Gaussian quadrature in mu=sin(phi)
+    cfg = config.DEFAULT
+    if nlat is None:
+        nlat = cfg.numerics.nlat
+    if nlon is None:
+        nlon = cfg.numerics.nlon
+
     mu, w = leggauss(nlat)
     lats = np.arcsin(mu)
     lons = np.linspace(0.0, 2 * np.pi, nlon, endpoint=False)
@@ -38,7 +43,7 @@ def cosine_latitudes(lats: jnp.ndarray) -> jnp.ndarray:
 
 
 @jax.jit
-def area_weights(weights: jnp.ndarray, nlon: int = config.nlon) -> jnp.ndarray:
+def area_weights(weights: jnp.ndarray, nlon: int | None = None) -> jnp.ndarray:
     """Compute 2D area weights normalized to integrate to 4π.
 
     Parameters
@@ -48,4 +53,6 @@ def area_weights(weights: jnp.ndarray, nlon: int = config.nlon) -> jnp.ndarray:
     nlon : int
         Number of longitudes.
     """
+    if nlon is None:
+        nlon = config.DEFAULT.numerics.nlon
     return weights[:, None] * jnp.ones((weights.shape[0], nlon)) * (2 * jnp.pi / nlon)

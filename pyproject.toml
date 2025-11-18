@@ -6,7 +6,10 @@ dependencies = [
   "jax[cpu]>=0.4",
   "numpy>=1.24",
   "matplotlib>=3.7",
-  "imageio>=2.31"
+  "imageio>=2.31",
+  "xarray>=2023.6",
+  "netCDF4>=1.6",
+  "pyyaml>=6.0"
 ]
 
 [build-system]
