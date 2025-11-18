@@ -1,2 +1,27 @@
-from . import config, grid, spharm, vertical, state, tendencies, implicit, diffusion, timestep
-__all__ = ["config", "grid", "spharm", "vertical", "state", "tendencies", "implicit", "diffusion", "timestep"]
+"""AFES Venus JAX minimal core."""
+from . import (
+    config,
+    grid,
+    spectral,
+    vertical,
+    state,
+    diffusion,
+    friction,
+    driver,
+)
+from .dynamics import integrators
+from .physics import solar, newtonian
+
+__all__ = [
+    "config",
+    "grid",
+    "spectral",
+    "vertical",
+    "state",
+    "diffusion",
+    "friction",
+    "driver",
+    "integrators",
+    "solar",
+    "newtonian",
+]

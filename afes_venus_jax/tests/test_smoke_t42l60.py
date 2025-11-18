@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
-from afes_venus_jax import state, timestep, config
+from afes_venus_jax import state, config
+from afes_venus_jax.dynamics import integrators
 
 
 def test_short_run_no_nan():
@@ -12,6 +13,6 @@ def test_short_run_no_nan():
         T=s.T,
         lnps=s.lnps,
     )
-    final, _ = timestep.integrate(s, nsteps=3)
+    final, _ = integrators.integrate(s, nsteps=3, cfg=config.DEFAULT)
     assert jnp.all(jnp.isfinite(final.zeta))
     assert jnp.all(jnp.isfinite(final.lnps))

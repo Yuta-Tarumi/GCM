@@ -1,32 +1,50 @@
-"""Spectral hyperdiffusion operators."""
+"""Horizontal hyperdiffusion and vertical mixing."""
 from __future__ import annotations
-import jax
 import jax.numpy as jnp
-from . import config
+from . import config, spectral, vertical
+from .state import ModelState
 
 
-@jax.jit
-def hyperdiffusion(flm: jnp.ndarray, tau: float = config.tau_hdiff, order: int = config.order_hdiff):
-    """Apply isotropic hyperdiffusion to a spectral field."""
-    # approximate using Fourier zonal wavenumbers only
-    nlon = flm.shape[-1]
-    m = jnp.fft.fftfreq(nlon) * nlon
-    k2 = (m / config.a) ** 2
-    factor = (k2 ** (order // 2))[None, :]
-    max_k = jnp.max(k2)
-    nu = 1.0 / (tau * (max_k ** (order // 2) + 1e-12))
-    def apply_level(f):
-        fhat = jnp.fft.fft(f, axis=-1)
-        return jnp.fft.ifft(fhat * (1 - nu * factor), axis=-1)
-    return jax.vmap(apply_level)(flm)
+def _iterated_laplacian(field: jnp.ndarray, order: int) -> jnp.ndarray:
+    result = field
+    for _ in range(order):
+        result = spectral.lap_spec(result)
+    return result
 
 
-@jax.jit
-def apply_all(state, tau: float = config.tau_hdiff, order: int = config.order_hdiff):
-    """Apply hyperdiffusion to all prognostic variables."""
-    return state.__class__(
-        zeta=hyperdiffusion(state.zeta, tau, order),
-        div=hyperdiffusion(state.div, tau, order),
-        T=hyperdiffusion(state.T, tau, order),
-        lnps=hyperdiffusion(state.lnps[None, ...], tau, order)[0],
+def _hyperdiff_coefficient(cfg: config.ModelConfig) -> float:
+    kmax = cfg.numerics.nlon / 2
+    return 1.0 / (cfg.numerics.hyperdiff_tau_smallest * (kmax ** cfg.numerics.hyperdiff_order))
+
+
+def hyperdiffusion_tendency(field: jnp.ndarray, cfg: config.ModelConfig | None = None) -> jnp.ndarray:
+    if cfg is None:
+        cfg = config.DEFAULT
+    m = cfg.numerics.hyperdiff_order // 2
+    lap = _iterated_laplacian(field, m)
+    nu = _hyperdiff_coefficient(cfg)
+    return -nu * lap
+
+
+def apply_hyperdiffusion(state: ModelState, cfg: config.ModelConfig | None = None) -> ModelState:
+    if cfg is None:
+        cfg = config.DEFAULT
+    dt = cfg.numerics.dt
+    return ModelState(
+        zeta=state.zeta + dt * hyperdiffusion_tendency(state.zeta, cfg),
+        div=state.div + dt * hyperdiffusion_tendency(state.div, cfg),
+        T=state.T + dt * hyperdiffusion_tendency(state.T, cfg),
+        lnps=state.lnps + dt * hyperdiffusion_tendency(state.lnps[None, ...], cfg)[0],
     )
+
+
+def vertical_diffusion_temperature(state: ModelState, cfg: config.ModelConfig | None = None) -> jnp.ndarray:
+    if cfg is None:
+        cfg = config.DEFAULT
+    Kz = cfg.physics.kz
+    heights = vertical.level_heights(cfg.numerics.nlev)
+    dz = jnp.gradient(heights)
+    T = spectral.synthesis_spec_to_grid(state.T)
+    lap = (jnp.roll(T, -1, axis=0) - 2 * T + jnp.roll(T, 1, axis=0)) / (dz[:, None, None] ** 2)
+    lap = lap.at[0].set(0.0).at[-1].set(0.0)
+    return spectral.analysis_grid_to_spec(Kz * lap)

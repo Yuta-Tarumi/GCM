@@ -1,70 +1,78 @@
-"""Lightweight spectral transform helpers built on JAX."""
+"""Lightweight pseudo-spectral transform helpers."""
 from __future__ import annotations
 import jax
 import jax.numpy as jnp
 from . import config, grid
 
+__all__ = [
+    "analysis_grid_to_spec",
+    "synthesis_spec_to_grid",
+    "apply_two_thirds_filter",
+    "lap_spec",
+    "invert_laplacian",
+    "psi_chi_from_vort_div",
+    "uv_from_psi_chi",
+]
+
+
+def _two_thirds_mask(nlon: int) -> jnp.ndarray:
+    cutoff = int(((nlon // 2) * 2) / 3)
+    rfft_len = nlon // 2 + 1
+    mask = jnp.ones((rfft_len,), dtype=jnp.float64)
+    return mask.at[cutoff + 1 :].set(0.0)
+
+
+@jax.jit
+def apply_two_thirds_filter(field: jnp.ndarray) -> jnp.ndarray:
+    """Apply the 2/3 de-aliasing filter along longitude."""
+    nlon = field.shape[-1]
+    mask = _two_thirds_mask(nlon)
+    fhat = jnp.fft.rfft(field, axis=-1)
+    filtered = jnp.fft.irfft(fhat * mask, n=nlon, axis=-1)
+    return filtered
+
 
 @jax.jit
 def analysis_grid_to_spec(field_grid: jnp.ndarray) -> jnp.ndarray:
-    """Pseudo spectral analysis (identity placeholder).
-
-    Parameters
-    ----------
-    field_grid : (..., nlat, nlon) array
-
-    Returns
-    -------
-    flm : same shape
-    """
-    return field_grid.astype(jnp.complex128)
+    """Pseudo spectral analysis (identity placeholder)."""
+    return field_grid.astype(jnp.complex64)
 
 
 @jax.jit
 def synthesis_spec_to_grid(flm: jnp.ndarray) -> jnp.ndarray:
-    """Pseudo spectral synthesis (identity)."""
+    """Return grid representation by taking the real part."""
     return jnp.real(flm)
 
 
 @jax.jit
 def lap_spec(flm: jnp.ndarray) -> jnp.ndarray:
-    """Apply spherical Laplacian using grid finite differences.
-
-    The operator is evaluated in grid space for stability and then
-    returned to spectral space.
-    """
+    """Apply a finite-difference Laplacian in grid space."""
     field = synthesis_spec_to_grid(flm)
     lats, lons, _ = grid.gaussian_grid()
     dlon = lons[1] - lons[0]
     dphi = lats[1] - lats[0]
     cosphi = grid.cosine_latitudes(lats)
-
-    # periodic in longitude
     f_lon = jnp.roll(field, -1, axis=-1) - 2 * field + jnp.roll(field, 1, axis=-1)
-    f_lon = f_lon / (config.a ** 2 * (dlon ** 2))
-    # latitude derivative using central diff
+    f_lon = f_lon / (config.planet.radius ** 2 * (dlon ** 2))
     f_phi = jnp.roll(field, -1, axis=-2) - 2 * field + jnp.roll(field, 1, axis=-2)
-    f_phi = f_phi / (config.a ** 2 * (dphi ** 2))
-    # metric term for varying cosphi
+    f_phi = f_phi / (config.planet.radius ** 2 * (dphi ** 2))
     tanphi = jnp.tan(lats)[:, None]
     dfdphi = (jnp.roll(field, -1, axis=-2) - jnp.roll(field, 1, axis=-2)) / (2 * dphi)
-    metric = (tanphi / (config.a ** 2)) * dfdphi
+    metric = (tanphi / (config.planet.radius ** 2)) * dfdphi
     lap = f_lon / (cosphi[:, None] ** 2) + f_phi + metric
     return analysis_grid_to_spec(jnp.real(lap))
 
 
 @jax.jit
 def invert_laplacian(flm: jnp.ndarray, eps: float = 1e-12) -> jnp.ndarray:
-    """Pseudo-inverse Laplacian using FFT-based wavenumbers on the grid."""
+    """Pseudo-inverse Laplacian using Fourier meridional bands."""
     field = synthesis_spec_to_grid(flm)
-    # Simple Fourier-space inversion per latitude band.
     fhat = jnp.fft.rfft(field, axis=-1)
     nlon = field.shape[-1]
     m = jnp.arange(fhat.shape[-1])
-    k2 = (m / config.a) ** 2
+    k2 = (m / config.planet.radius) ** 2
     inv = jnp.where(k2[None, :] > eps, -1.0 / k2[None, :], 0.0)
-    inv = inv.astype(jnp.complex128)
-    psi_hat = fhat * inv
+    psi_hat = fhat * inv.astype(jnp.complex128)
     psi = jnp.fft.irfft(psi_hat, n=nlon, axis=-1)
     return analysis_grid_to_spec(psi)
 
@@ -94,6 +102,7 @@ def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray):
     dpsi_dphi, dpsi_dlon = _gradients(psi, lats, lons)
     dchi_dphi, dchi_dlon = _gradients(chi, lats, lons)
     cosphi = grid.cosine_latitudes(lats)[:, None]
-    u = -(1.0 / (config.a * cosphi)) * dpsi_dphi + (1.0 / config.a) * dchi_dlon
-    v = (1.0 / config.a) * dpsi_dlon + (1.0 / (config.a * cosphi)) * dchi_dphi
+    a = config.planet.radius
+    u = -(1.0 / (a * cosphi)) * dpsi_dphi + (1.0 / a) * dchi_dlon
+    v = (1.0 / a) * dpsi_dlon + (1.0 / (a * cosphi)) * dchi_dphi
     return u, v
