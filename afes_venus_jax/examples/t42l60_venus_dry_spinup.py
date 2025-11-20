@@ -32,14 +32,6 @@ def save_wind_field(state, cfg: Config, step: int, out_dir: Path):
 
     fig, ax = plt.subplots(figsize=(10, 4))
     speed_plot = ax.pcolormesh(jnp.asarray(lon2d), jnp.asarray(lat2d), jnp.asarray(wind_speed), shading="auto")
-    skip = max(1, cfg.nlon // 32)
-    ax.quiver(
-        jnp.asarray(lon2d[::skip, ::skip]),
-        jnp.asarray(lat2d[::skip, ::skip]),
-        jnp.asarray(u[::skip, ::skip]),
-        jnp.asarray(v[::skip, ::skip]),
-        scale=300,
-    )
     ax.set_xlabel("Longitude (deg)")
     ax.set_ylabel("Latitude (deg)")
     ax.set_title(f"Wind field at step {step}")
