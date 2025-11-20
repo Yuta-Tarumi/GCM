@@ -14,7 +14,7 @@ numerics:
   nlev: 60
   dt: 600.0
   semi_implicit_alpha: 0.5
-  hyperdiff_order: 8
+  hyperdiff_order: 4
   # A much looser smallest-scale e-folding time keeps the thermal tides alive
   # long enough to build the superrotating jet instead of damping them out
   # before momentum can be pumped upward, mirroring the AFES-Venus settings.
