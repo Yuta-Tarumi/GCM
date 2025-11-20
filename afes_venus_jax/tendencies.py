@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 from .spharm import synthesis_spec_to_grid, psi_chi_from_vort_div, uv_from_psi_chi, analysis_grid_to_spec
 from .config import Config
+from .grid import gaussian_grid
 from .vertical import reference_temperature_profile, sigma_levels, vertical_coordinates
 
 
@@ -17,10 +18,19 @@ def nonlinear_tendencies(state, cfg: Config):
     T = synthesis_spec_to_grid(state.T)
     lnps = synthesis_spec_to_grid(state.lnps, cfg.nlat, cfg.nlon)
 
+    lats, _, _ = gaussian_grid(cfg)
+    cos_lat = jnp.clip(jnp.cos(lats), 1e-6, None)[None, :, None]
+    dlon_spacing = 2 * jnp.pi / cfg.nlon
+    dlat_spacing = jnp.pi / cfg.nlat
+
     def advect(field):
-        dlon = jnp.gradient(field, axis=-1)
-        dlat = jnp.gradient(field, axis=-2)
-        return -(u * dlon + v * dlat)
+        # Use wrapped central differences in both longitude and latitude so the
+        # discrete gradients line up with the doubly periodic FFT grid.
+        dlon = (jnp.roll(field, -1, axis=-1) - jnp.roll(field, 1, axis=-1)) / (2 * dlon_spacing)
+        dlat = (jnp.roll(field, -1, axis=-2) - jnp.roll(field, 1, axis=-2)) / (2 * dlat_spacing)
+        metric_u = dlon / (cfg.a * cos_lat)
+        metric_v = dlat / cfg.a
+        return -(u * metric_u + v * metric_v)
 
     _, z_full = vertical_coordinates(cfg)
     laplace_zeta = vertical_laplacian(zeta, z_full)

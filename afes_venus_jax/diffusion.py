@@ -7,13 +7,23 @@ from .config import Config
 
 
 def diffusion_operator(cfg: Config, nlat: int, nlon: int):
-    """Precompute spectral hyperdiffusion coefficient field."""
+    """Precompute spectral hyperdiffusion coefficient field.
+
+    The damping strength is set so that the smallest resolved scale decays with
+    an e-folding time of ``cfg.tau_hdiff`` while larger scales are damped more
+    weakly according to the chosen order.
+    """
+
     k_lat = jnp.fft.fftfreq(nlat, d=jnp.pi / nlat) * 2 * jnp.pi
     k_lon = jnp.fft.fftfreq(nlon, d=2 * jnp.pi / nlon) * 2 * jnp.pi
     ell = jnp.sqrt(k_lat[:, None] ** 2 + k_lon[None, :] ** 2)
     ellmax = jnp.maximum(jnp.max(ell), 1e-12)
-    nu = 1.0 / (cfg.tau_hdiff * (ellmax / cfg.a) ** (2 * cfg.order_hdiff))
-    coeff = -nu * (ell / cfg.a) ** (2 * cfg.order_hdiff)
+
+    # Use the dimensionless ratio (ell / ellmax) so the scaling is controlled
+    # purely by the truncation wavenumber and the chosen order. This avoids the
+    # huge coefficients that arise if we divide by the planetary radius twice.
+    ell_fraction = ell / ellmax
+    coeff = -(1.0 / cfg.tau_hdiff) * (ell_fraction ** (2 * cfg.order_hdiff))
     coeff = jnp.where(ell == 0, 0.0, coeff)
     return coeff
 

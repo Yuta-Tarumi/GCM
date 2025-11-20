@@ -9,6 +9,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 from .config import Config
+from .grid import gaussian_grid
 
 
 def _fftfreq(n, d=1.0):
@@ -70,6 +71,9 @@ def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray, cfg: Config):
     k_lat = _fftfreq(nlat, d=jnp.pi / nlat)
     k_lon = _fftfreq(nlon, d=2 * jnp.pi / nlon)
 
+    lats, _, _ = gaussian_grid(cfg)
+    cos_lat = jnp.clip(jnp.cos(lats), 1e-6, None)[None, :, None]
+
     def grad(flm):
         return synthesis_spec_to_grid(1j * k_lon[None, :] * flm, nlat, nlon), synthesis_spec_to_grid(
             1j * k_lat[:, None] * flm, nlat, nlon
@@ -77,8 +81,10 @@ def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray, cfg: Config):
 
     dchi_dlon, dchi_dlat = grad(chi_lm)
     dpsi_dlon, dpsi_dlat = grad(psi_lm)
-    u = (1.0 / cfg.a) * (dchi_dlon - dpsi_dlat)
-    v = (1.0 / cfg.a) * (dchi_dlat + dpsi_dlon)
+    metric_lon = 1.0 / (cfg.a * cos_lat)
+    metric_lat = 1.0 / cfg.a
+    u = metric_lon * dchi_dlon - metric_lat * dpsi_dlat
+    v = metric_lat * dchi_dlat + metric_lon * dpsi_dlon
     return u, v
 
 
