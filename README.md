@@ -70,3 +70,72 @@ python -m afes_venus_jax.examples.afes_paper_reproduction --config afes_venus_ja
 
 The script writes a GIF plus diagnostic PNGs under `figures/` that can be
 compared against the paper's superrotation experiments.
+
+## Rotating superrotation experiment
+
+To reproduce the rotating-atmosphere experiment that keeps a solid-body
+superrotation prograde—matching the regression test—you can invoke the
+superrotation demo helpers directly. The snippet below automatically uses a GPU
+if JAX detects one and writes a short animation to `figures/`:
+
+```bash
+python -m afes_venus_jax.experiments.rotating_superrotation
+```
+
+Pass `--nsteps`, `--sample-interval`, `--movie` or `--u-equator` to tweak the
+runtime and output path. For example, to render a faster preview that only runs
+two dozen steps and writes to `/tmp/preview.gif`:
+
+```bash
+python -m afes_venus_jax.experiments.rotating_superrotation --nsteps 24 --sample-interval 6 --movie /tmp/preview.gif
+```
+
+To customize the experiment further—mirroring the regression test with an
+explicit initial-state injection—you can invoke the superrotation demo helpers
+directly. The snippet below automatically uses a GPU if JAX detects one and
+writes a short animation to `figures/`:
+
+```bash
+python - <<'PY'
+import jax
+from afes_venus_jax import config
+from afes_venus_jax.examples import superrotation_demo
+
+cfg = config.DEFAULT
+device = next((d for d in jax.devices() if d.platform == "gpu"), jax.devices()[0])
+
+# Start from a solid-body superrotation with a 70 m/s cloud-top jet.
+initial = superrotation_demo.initial_solid_body_superrotation(u_equator=70.0, cfg=cfg)
+initial = jax.tree_util.tree_map(lambda arr: jax.device_put(arr, device), initial)
+
+# Run a short integration and record the jet profile along the equator.
+frames, profiles, times, lats, lons, heights = superrotation_demo.collect_superrotation_history(
+    nsteps=48,
+    sample_interval=6,
+    seed=0,
+    equatorial_half_width=20.0,
+    initial_state=initial,
+    device=device,
+    cfg=cfg,
+)
+
+movie = superrotation_demo.render_movie(
+    frames,
+    profiles,
+    heights,
+    lats,
+    lons,
+    level_height_km=60.0,
+    times=times,
+    path="figures/rotating_superrotation.gif",
+)
+
+print(f"Wrote {movie}")
+PY
+```
+
+For a quick health check, the same setup is validated by the regression test:
+
+```bash
+pytest afes_venus_jax/tests/test_rotating_superrotation.py -q
+```
