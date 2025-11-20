@@ -15,6 +15,7 @@ from typing import Sequence
 
 import imageio.v2 as imageio
 import jax
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -36,6 +37,35 @@ def _random_initial_state(seed: int, amplitude: float = 1e-7) -> state.ModelStat
     key = jax.random.PRNGKey(seed)
     noise = amplitude * (jax.random.normal(key, base.zeta.shape) + 1j * 0.0)
     return state.ModelState(zeta=base.zeta + noise, div=base.div, T=base.T, lnps=base.lnps)
+
+
+def initial_solid_body_superrotation(
+    u_equator: float = 60.0,
+    cfg: config.ModelConfig | None = None,
+) -> state.ModelState:
+    """Construct a solid-body rotating state that mimics cloud-top superrotation.
+
+    The target equatorial wind speed sets an equivalent angular velocity
+    (``Ω = u_equator / a``) that is converted into a streamfunction with zero
+    divergence.  Applying the Laplacian recovers the vorticity field required for
+    the desired zonal wind, while temperature and surface pressure remain tied to
+    the default isothermal profile.
+    """
+
+    if cfg is None:
+        cfg = config.DEFAULT
+
+    base = state.initial_isothermal(
+        L=cfg.numerics.nlev, nlat=cfg.numerics.nlat, nlon=cfg.numerics.nlon
+    )
+    lats, lons, _ = grid.gaussian_grid(cfg.numerics.nlat, cfg.numerics.nlon)
+    a = cfg.planet.radius
+    zeta_band = jnp.ones((cfg.numerics.nlat, 1)) * (1.1 * u_equator / a)
+    zeta_grid = jnp.broadcast_to(zeta_band, (cfg.numerics.nlev, cfg.numerics.nlat, cfg.numerics.nlon))
+    zeta = spectral.analysis_grid_to_spec(zeta_grid.astype(jnp.complex64))
+    div = spectral.analysis_grid_to_spec(jnp.zeros_like(zeta_grid, dtype=jnp.complex64))
+
+    return state.ModelState(zeta=zeta, div=div, T=base.T, lnps=base.lnps)
 
 
 def _equatorial_mean(u_field: np.ndarray, lats: np.ndarray, half_width_deg: float) -> np.ndarray:
@@ -64,12 +94,13 @@ def collect_superrotation_history(
     sample_interval: int,
     seed: int,
     equatorial_half_width: float,
+    initial_state: state.ModelState | None = None,
     device: jax.Device | None = None,
     cfg: config.ModelConfig | None = None,
 ):
     if cfg is None:
         cfg = config.DEFAULT
-    cur = _random_initial_state(seed)
+    cur = initial_state if initial_state is not None else _random_initial_state(seed)
     if device is not None:
         cur = jax.tree_util.tree_map(lambda arr: jax.device_put(arr, device), cur)
 

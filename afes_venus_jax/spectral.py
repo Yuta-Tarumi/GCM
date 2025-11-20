@@ -77,11 +77,37 @@ def invert_laplacian(flm: jnp.ndarray, eps: float = 1e-12) -> jnp.ndarray:
     return analysis_grid_to_spec(psi)
 
 
+def _zonal_mean_potential(source: jnp.ndarray, lats: jnp.ndarray) -> jnp.ndarray:
+    """Reconstruct a potential whose Laplacian matches the zonal-mean source.
+
+    The pseudo-spectral inversion above ignores the m=0 component; this helper
+    integrates the meridional structure directly so that zonally symmetric
+    vorticity or divergence still generate balanced flows.
+    """
+
+    dphi = lats[1] - lats[0]
+    cosphi = grid.cosine_latitudes(lats)
+    mean_source = source.mean(axis=-1)
+    integral = jnp.cumsum(config.planet.radius**2 * cosphi * mean_source, axis=-1) * dphi
+    integral = integral - integral[..., -1:]
+    dpotential_dphi = integral / cosphi
+    potential_lat = jnp.cumsum(dpotential_dphi, axis=-1) * dphi
+    potential_lat = potential_lat - potential_lat.mean(axis=-1, keepdims=True)
+    potential = potential_lat[..., None]
+    return jnp.broadcast_to(potential, source.shape)
+
+
 @jax.jit
 def psi_chi_from_vort_div(zeta_lm: jnp.ndarray, div_lm: jnp.ndarray):
     """Recover streamfunction and velocity potential from vorticity/divergence."""
+    lats, _, _ = grid.gaussian_grid()
     psi = invert_laplacian(zeta_lm)
     chi = invert_laplacian(div_lm)
+
+    psi_mean = _zonal_mean_potential(synthesis_spec_to_grid(zeta_lm), lats)
+    chi_mean = _zonal_mean_potential(synthesis_spec_to_grid(div_lm), lats)
+    psi = psi + analysis_grid_to_spec(psi_mean)
+    chi = chi + analysis_grid_to_spec(chi_mean)
     return psi, chi
 
 
