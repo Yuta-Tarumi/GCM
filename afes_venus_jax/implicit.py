@@ -18,7 +18,9 @@ def apply_semi_implicit(div_lm: jnp.ndarray, T_lm: jnp.ndarray, lnps_lm: jnp.nda
     time stepping stable for the test problems.
     """
     factor = 1.0 / (1.0 + cfg.alpha)
-    return div_lm * factor, T_lm * factor, lnps_lm * factor
+    # Leave temperature untouched to preserve background stratification while
+    # damping fast gravity-wave components of divergence and surface pressure.
+    return div_lm * factor, T_lm, lnps_lm * factor
 
 
 def robert_asselin_filter(new: jnp.ndarray, old: jnp.ndarray, ra: float):
