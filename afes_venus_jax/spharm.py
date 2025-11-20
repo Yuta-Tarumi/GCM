@@ -72,7 +72,8 @@ def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray, cfg: Config):
     k_lon = _fftfreq(nlon, d=2 * jnp.pi / nlon)
 
     lats, _, _ = gaussian_grid(cfg)
-    cos_lat = jnp.clip(jnp.cos(lats), 1e-6, None)[None, :, None]
+    # Keep latitude metrics 2D so wind components stay (nlat, nlon)
+    cos_lat = jnp.clip(jnp.cos(lats), 1e-6, None)[:, None]
 
     def grad(flm):
         return synthesis_spec_to_grid(1j * k_lon[None, :] * flm, nlat, nlon), synthesis_spec_to_grid(
