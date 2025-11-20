@@ -8,7 +8,13 @@ from .config import Config
 
 
 def gaussian_grid(cfg: Config):
-    """Construct a Gaussian grid.
+    """Construct an evenly spaced latitude-longitude grid.
+
+    The spectral operators in :mod:`afes_venus_jax.spharm` assume uniform grid
+    spacing and periodicity when using FFTs.  Using an equispaced latitude
+    discretisation keeps the grid-consistent with the transforms and avoids the
+    large truncation errors that arise when pairing FFTs with nonuniform
+    Gaussian latitudes.
 
     Parameters
     ----------
@@ -22,14 +28,14 @@ def gaussian_grid(cfg: Config):
     lons: jnp.ndarray
         Longitudes in radians, shape (nlon,).
     weights: jnp.ndarray
-        Gaussian quadrature weights, shape (nlat,).
+        Uniform quadrature weights, shape (nlat,).
     """
     nlat = cfg.nlat
     nlon = cfg.nlon
-    x, w = legendre.leggauss(nlat)
-    lats = jnp.arcsin(jnp.asarray(x))
+    lats = jnp.linspace(-jnp.pi / 2, jnp.pi / 2, nlat, endpoint=False)
     lons = jnp.linspace(0.0, 2 * jnp.pi, nlon, endpoint=False)
-    return lats, lons, jnp.asarray(w)
+    weights = jnp.ones_like(lats)
+    return lats, lons, weights
 
 
 def quadrature_mean(field: jnp.ndarray, weights: jnp.ndarray) -> jnp.ndarray:
