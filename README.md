@@ -38,6 +38,18 @@ ds = avj.driver.run_afes_venus_paper_demo(nsteps=240, history_stride=24)
 print(ds)
 ```
 
+For a command-line shortcut, install the package in editable mode and run the
+demo directly:
+
+```bash
+pip install -e .
+afes-venus-demo --nsteps 240 --history-stride 24 --output paper_demo.nc
+```
+
+The CLI mirrors the defaults shown above and can be invoked with
+``python -m afes_venus_jax``. Pass `--help` to see all options, including the
+ability to tweak the initial solid-body rotation parameters.
+
 By default the initial solid rotation co-rotates with the planet; pass an
 `angular_speed` in rad s⁻¹ or `equatorial_speed` in m s⁻¹ (negative for westward)
 to match a different solid-body jet strength from the paper.
