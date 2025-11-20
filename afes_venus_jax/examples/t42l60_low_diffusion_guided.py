@@ -19,14 +19,12 @@ transparent.
 from __future__ import annotations
 
 import dataclasses
-import jax
 import jax.numpy as jnp
 from afes_venus_jax.config import DEFAULT_CFG
 from afes_venus_jax.diffusion import hyperdiffusion_timescale
-from afes_venus_jax.spharm import analysis_grid_to_spec, synthesis_spec_to_grid
-from afes_venus_jax.state import zeros_state
+from afes_venus_jax.initial_conditions import superrotating_initial_state
+from afes_venus_jax.spharm import synthesis_spec_to_grid
 from afes_venus_jax.timestep import jit_step
-from afes_venus_jax.vertical import reference_temperature_profile
 
 
 def describe_diffusion(cfg):
@@ -46,17 +44,7 @@ def main():
     print("Diffusion settings for the low-damping experiment:")
     describe_diffusion(cfg)
 
-    state = zeros_state(cfg)
-
-    key = jax.random.PRNGKey(0)
-    grid_noise = 1e-3 * jax.random.normal(key, (cfg.L, cfg.nlat, cfg.nlon))
-    noise_spec = analysis_grid_to_spec(grid_noise, cfg)
-    state = state.__class__(zeta=state.zeta + noise_spec, div=state.div, T=state.T, lnps=state.lnps)
-
-    T_profile = reference_temperature_profile(cfg)
-    T_grid = jnp.broadcast_to(T_profile[:, None, None], (cfg.L, cfg.nlat, cfg.nlon))
-    T_spec = analysis_grid_to_spec(T_grid, cfg)
-    state = state.__class__(zeta=state.zeta, div=state.div, T=T_spec, lnps=state.lnps)
+    state = superrotating_initial_state(cfg)
 
     nsteps = int(2 * 86400 / cfg.dt)
     for i in range(nsteps):
