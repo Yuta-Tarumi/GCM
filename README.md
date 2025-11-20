@@ -1,8 +1,9 @@
 # AFES Venus JAX (minimal)
 
 A light-weight hydrostatic primitive-equation core for Venus built on top of
-[JAX](https://github.com/google/jax). The model follows the specification from
-the user story:
+[JAX](https://github.com/google/jax). This minimal snapshot retains only the
+dynamics and physics core—the automated test suites have been removed. The
+model follows the specification from the user story:
 
 * T42 spectral truncation on a 128×64 Gaussian grid with 60 σ-levels.
 * Prognostic variables: relative vorticity (ζ), divergence (D), temperature (T)
@@ -20,12 +21,6 @@ The implementation keeps the linear algebra intentionally lightweight so that it
 can run quickly on CPU-only GitHub Actions runners while remaining fully JIT
 compatible.
 
-## Running tests
-
-```bash
-pytest -q
-```
-
 ## Demo
 
 ```bash
@@ -42,7 +37,7 @@ python -m afes_venus_jax.examples.run_and_movie --scenario vortex_pair
 Pass `--scenario random_noise` to reproduce the previous near-rest example if
 desired. The default `vortex_pair` configuration seeds a balanced pair of
 opposite-signed vortices that yields bounded yet visually interesting output for
-quick smoke tests.
+quick smoke checks.
 
 For a longer superrotation showcase that starts from a noisy state, integrates
 for several Venus days, and writes a two-panel animation highlighting the zonal
@@ -74,8 +69,8 @@ compared against the paper's superrotation experiments.
 ## Rotating superrotation experiment
 
 To reproduce the rotating-atmosphere experiment that keeps a solid-body
-superrotation prograde—matching the regression test—you can invoke the
-superrotation demo helpers directly. The snippet below automatically uses a GPU
+superrotation prograde, you can invoke the superrotation demo helpers directly.
+The snippet below automatically uses a GPU
 if JAX detects one and writes a short animation to `figures/`:
 
 ```bash
@@ -90,10 +85,10 @@ two dozen steps and writes to `/tmp/preview.gif`:
 python -m afes_venus_jax.experiments.rotating_superrotation --nsteps 24 --sample-interval 6 --movie /tmp/preview.gif
 ```
 
-To customize the experiment further—mirroring the regression test with an
-explicit initial-state injection—you can invoke the superrotation demo helpers
-directly. The snippet below automatically uses a GPU if JAX detects one and
-writes a short animation to `figures/`:
+To customize the experiment further—with an explicit initial-state injection—you
+can invoke the superrotation demo helpers directly. The snippet below
+automatically uses a GPU if JAX detects one and writes a short animation to
+`figures/`:
 
 ```bash
 python - <<'PY'
@@ -134,8 +129,3 @@ print(f"Wrote {movie}")
 PY
 ```
 
-For a quick health check, the same setup is validated by the regression test:
-
-```bash
-pytest afes_venus_jax/tests/test_rotating_superrotation.py -q
-```
