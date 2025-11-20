@@ -52,8 +52,10 @@ def heating_tendency(T: jnp.ndarray, cfg: Config, z_full: jnp.ndarray) -> jnp.nd
     _, sigma_full = sigma_levels(cfg)
     T_eq = reference_temperature_profile(cfg)[:, None, None]
 
-    dT_dz = jnp.gradient(T, z_full, axis=0)
-    d2T_dz2 = jnp.gradient(dT_dz, z_full, axis=0)
+    dz = jnp.diff(z_full).mean()
+
+    dT_dz = jnp.gradient(T, dz, axis=0)
+    d2T_dz2 = jnp.gradient(dT_dz, dz, axis=0)
     vertical_diffusion = cfg.nu_vert * d2T_dz2
 
     # Prescribed shortwave heating focused near the cloud tops
@@ -69,8 +71,10 @@ def heating_tendency(T: jnp.ndarray, cfg: Config, z_full: jnp.ndarray) -> jnp.nd
 def vertical_laplacian(field: jnp.ndarray, z_full: jnp.ndarray) -> jnp.ndarray:
     """Second derivative with respect to height for vertically stacked fields."""
 
-    d_dz = jnp.gradient(field, z_full, axis=0)
-    return jnp.gradient(d_dz, z_full, axis=0)
+    dz = jnp.diff(z_full).mean()
+
+    d_dz = jnp.gradient(field, dz, axis=0)
+    return jnp.gradient(d_dz, dz, axis=0)
 
 
 def apply_surface_rayleigh(tendency: jnp.ndarray, field: jnp.ndarray, cfg: Config) -> jnp.ndarray:
