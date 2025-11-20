@@ -12,6 +12,9 @@ dependencies = [
   "pyyaml>=6.0"
 ]
 
+[project.scripts]
+afes-venus-demo = "afes_venus_jax.cli:main"
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
