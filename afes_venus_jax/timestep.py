@@ -9,6 +9,7 @@ from .diffusion import apply_diffusion
 from .config import Config
 from .state import StateTree
 from .spharm import psi_chi_from_vort_div, uv_from_psi_chi
+from .grid import gaussian_grid
 
 
 def step(state: StateTree, cfg: Config) -> StateTree:
@@ -34,8 +35,9 @@ def step(state: StateTree, cfg: Config) -> StateTree:
     psi, chi = psi_chi_from_vort_div(zeta_f, div_f, cfg)
     u, v = uv_from_psi_chi(psi, chi, cfg)
     speed_max = jnp.max(jnp.sqrt(u**2 + v**2))
-    dx = cfg.a * (2 * jnp.pi / cfg.nlon)
-    dy = cfg.a * (jnp.pi / cfg.nlat)
+    lats, lons, _ = gaussian_grid(cfg)
+    dx = cfg.a * jnp.min(jnp.diff(lons))
+    dy = cfg.a * jnp.min(jnp.abs(jnp.diff(lats)))
     max_speed = 0.5 * jnp.minimum(dx, dy) / cfg.dt
     scale = jnp.minimum(1.0, max_speed / jnp.maximum(speed_max, 1e-12))
 

@@ -2,39 +2,31 @@
 from __future__ import annotations
 
 import jax.numpy as jnp
-import numpy as np
 from numpy.polynomial import legendre
 from .config import Config
 
 
 def gaussian_grid(cfg: Config):
-    """Construct an evenly spaced latitude-longitude grid.
+    """Construct a true Gaussian latitude grid with uniform longitudes.
 
-    The spectral operators in :mod:`afes_venus_jax.spharm` assume uniform grid
-    spacing and periodicity when using FFTs.  Using an equispaced latitude
-    discretisation keeps the grid-consistent with the transforms and avoids the
-    large truncation errors that arise when pairing FFTs with nonuniform
-    Gaussian latitudes.
-
-    Parameters
-    ----------
-    cfg: Config
-        Model configuration providing ``nlat`` and ``nlon``.
-
-    Returns
-    -------
-    lats: jnp.ndarray
-        Latitudes in radians, shape (nlat,).
-    lons: jnp.ndarray
-        Longitudes in radians, shape (nlon,).
-    weights: jnp.ndarray
-        Uniform quadrature weights, shape (nlat,).
+    The nodes follow the Gauss–Legendre quadrature abscissas, providing the
+    spherical quadrature needed for exact spectral transforms with associated
+    Legendre polynomials through total wavenumber ``cfg.Lmax``.
     """
+
     nlat = cfg.nlat
     nlon = cfg.nlon
-    lats = jnp.linspace(-jnp.pi / 2, jnp.pi / 2, nlat, endpoint=False)
+
+    # Gauss–Legendre abscissas/weights on [-1, 1] in terms of μ = sin φ.
+    mu, w = legendre.leggauss(nlat)
+    lats = jnp.arcsin(mu)
+
+    # Shift longitudes to [0, 2π).
     lons = jnp.linspace(0.0, 2 * jnp.pi, nlon, endpoint=False)
-    weights = jnp.ones_like(lats)
+
+    # Quadrature weights are already appropriate for integrating over μ;
+    # they implicitly include the cos φ Jacobian via dμ = cos φ dφ.
+    weights = jnp.asarray(w)
     return lats, lons, weights
 
 

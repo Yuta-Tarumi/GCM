@@ -50,20 +50,20 @@ def main():
 
     key = jax.random.PRNGKey(0)
     grid_noise = 1e-3 * jax.random.normal(key, (cfg.L, cfg.nlat, cfg.nlon))
-    noise_spec = analysis_grid_to_spec(grid_noise)
+    noise_spec = analysis_grid_to_spec(grid_noise, cfg)
     state = state.__class__(zeta=state.zeta + noise_spec, div=state.div, T=state.T, lnps=state.lnps)
 
     T_profile = reference_temperature_profile(cfg)
     T_grid = jnp.broadcast_to(T_profile[:, None, None], (cfg.L, cfg.nlat, cfg.nlon))
-    T_spec = analysis_grid_to_spec(T_grid)
+    T_spec = analysis_grid_to_spec(T_grid, cfg)
     state = state.__class__(zeta=state.zeta, div=state.div, T=T_spec, lnps=state.lnps)
 
     nsteps = int(2 * 86400 / cfg.dt)
     for i in range(nsteps):
         state = jit_step(state, cfg)
         if (i + 1) % 12 == 0:
-            zeta_grid = jnp.abs(synthesis_spec_to_grid(state.zeta[0]))
-            T_grid = synthesis_spec_to_grid(state.T)
+            zeta_grid = jnp.abs(synthesis_spec_to_grid(state.zeta[0], cfg))
+            T_grid = synthesis_spec_to_grid(state.T, cfg)
             col_mean_T = T_grid.mean(axis=(-2, -1))
             print(
                 "Step {}: max|zeta|={:.3e}, Tsurf={:.1f} K, Tmid={:.1f} K, Ttop={:.1f} K".format(

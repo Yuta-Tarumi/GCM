@@ -1,57 +1,105 @@
-"""Lightweight spherical spectral operators using FFTs.
-
-This module mimics a spectral transform interface while using separable FFTs
-as a stand-in for true spherical harmonics. The implementation is sufficient
-for testing and pedagogy while keeping the code JIT friendly.
-"""
+"""True spherical-harmonic operators with Gaussian quadrature."""
 from __future__ import annotations
 
+import functools
 import jax
 import jax.numpy as jnp
 from .config import Config
 from .grid import gaussian_grid
 
 
-def _fftfreq(n, d=1.0):
-    return jnp.fft.fftfreq(n, d) * 2 * jnp.pi
+def _norm_factor(ell: jnp.ndarray, m: jnp.ndarray):
+    return jnp.sqrt(
+        ((2 * ell + 1) / (4 * jnp.pi))
+        * jax.scipy.special.factorial(ell - m)
+        / jax.scipy.special.factorial(ell + m)
+    )
 
 
-def analysis_grid_to_spec(field: jnp.ndarray) -> jnp.ndarray:
-    """Forward transform grid → spectral using 2D FFT.
+@functools.cache
+def _associated_legendre(cfg: Config):
+    lats, _, _ = gaussian_grid(cfg)
+    mu = jnp.sin(lats)
+    cos_lat = jnp.cos(lats)
+    L = cfg.Lmax
+    P = jnp.zeros((L + 1, L + 1, cfg.nlat))
 
-    Parameters
-    ----------
-    field: array_like
-        Grid field with shape (..., nlat, nlon).
-    """
-    return jnp.fft.fft2(field, axes=(-2, -1)) / field.shape[-2] / field.shape[-1]
+    # Initial diagonal P_m^m
+    P = P.at[0, 0].set(1.0)
+    for m in range(1, L + 1):
+        sign = -1.0 if m % 2 else 1.0
+        P = P.at[m, m].set(sign * jnp.prod(2 * jnp.arange(1, m + 1) - 1) * (1 - mu**2) ** (m / 2))
+    # First off-diagonal
+    for m in range(0, L):
+        P = P.at[m + 1, m].set((2 * m + 1) * mu * P[m, m])
+    # Upward recursion for remaining rows
+    for m in range(0, L + 1):
+        for ell in range(m + 2, L + 1):
+            P = P.at[ell, m].set(((2 * ell - 1) * mu * P[ell - 1, m] - (ell + m - 1) * P[ell - 2, m]) / (ell - m))
+
+    # Derivative w.r.t. latitude φ using dP/dφ = cos φ * dP/dμ
+    dP_dmu = jnp.zeros_like(P)
+    denom = jnp.clip(1 - mu**2, 1e-12)
+    for m in range(0, L + 1):
+        for ell in range(m, L + 1):
+            if ell == 0:
+                dP_dmu = dP_dmu.at[ell, m].set(0.0)
+            else:
+                dP_dmu = dP_dmu.at[ell, m].set((ell * mu * P[ell, m] - (ell + m) * P[ell - 1, m]) / denom)
+    dP_dphi = cos_lat * dP_dmu
+    norms = _norm_factor(jnp.arange(L + 1)[:, None], jnp.arange(L + 1)[None, :])
+    return P, dP_dphi, norms
 
 
-def synthesis_spec_to_grid(flm: jnp.ndarray, nlat: int | None = None, nlon: int | None = None) -> jnp.ndarray:
-    """Inverse transform spectral → grid using 2D FFT."""
-    if nlat is None:
-        nlat = flm.shape[-2]
-    if nlon is None:
-        nlon = flm.shape[-1]
-    return jnp.fft.ifft2(flm * nlat * nlon, axes=(-2, -1)).real
+def analysis_grid_to_spec(field: jnp.ndarray, cfg: Config) -> jnp.ndarray:
+    """Grid → spherical-harmonic coefficients (ell, m>=0)."""
+
+    lats, _, weights = gaussian_grid(cfg)
+    P, _, norms = _associated_legendre(cfg)
+    fft_field = jnp.fft.fft(field, axis=-1)
+    delta_lon = 2 * jnp.pi / cfg.nlon
+    coeffs = []
+    for m in range(cfg.Lmax + 1):
+        # Fourier component for this zonal wavenumber
+        Fm = delta_lon * fft_field[..., m]
+        y_lat = norms[:, m][:, None] * P[:, m]
+        coeffs_m = jnp.einsum('...i,i,li->...l', Fm, weights, y_lat)
+        coeffs.append(coeffs_m)
+    return jnp.stack(coeffs, axis=-1)
+
+
+def synthesis_spec_to_grid(flm: jnp.ndarray, cfg: Config) -> jnp.ndarray:
+    """Spherical-harmonic coefficients → grid field."""
+
+    lats, _, _ = gaussian_grid(cfg)
+    P, _, norms = _associated_legendre(cfg)
+    lat_contribs = []
+    for m in range(cfg.Lmax + 1):
+        y_lat = norms[:, m][:, None] * P[:, m]
+        lat_contribs.append(jnp.einsum('...l,li->...i', flm[..., m], y_lat))
+    lat_contribs = jnp.stack(lat_contribs, axis=-1)
+
+    # Build complex Fourier spectrum for inverse FFT
+    lon_spec = jnp.zeros(flm.shape[:-2] + (cfg.nlat, cfg.nlon), dtype=jnp.complex128)
+    for m in range(cfg.Lmax + 1):
+        lon_spec = lon_spec.at[..., :, m].set(cfg.nlon * lat_contribs[..., m])
+        if m > 0:
+            lon_spec = lon_spec.at[..., :, -m].set(cfg.nlon * jnp.conj(lat_contribs[..., m]) * ((-1) ** m))
+    grid = jnp.fft.ifft(lon_spec, axis=-1).real
+    return grid
 
 
 def lap_spec(flm: jnp.ndarray, cfg: Config) -> jnp.ndarray:
-    """Apply a Laplacian in spectral space."""
-    nlat, nlon = flm.shape[-2], flm.shape[-1]
-    k_lat = _fftfreq(nlat, d=jnp.pi / nlat)
-    k_lon = _fftfreq(nlon, d=2 * jnp.pi / nlon)
-    k2 = k_lat[:, None] ** 2 + k_lon[None, :] ** 2
-    return -(k2 / cfg.a**2) * flm
+    ell = jnp.arange(cfg.Lmax + 1)
+    eig = -(ell * (ell + 1) / cfg.a**2)
+    return flm * eig[:, None]
 
 
 def invert_laplacian(flm: jnp.ndarray, cfg: Config) -> jnp.ndarray:
-    """Invert the Laplacian with zero-mean regularisation."""
-    nlat, nlon = flm.shape[-2], flm.shape[-1]
-    k_lat = _fftfreq(nlat, d=jnp.pi / nlat)
-    k_lon = _fftfreq(nlon, d=2 * jnp.pi / nlon)
-    k2 = k_lat[:, None] ** 2 + k_lon[None, :] ** 2
-    return jnp.where(k2 == 0, 0.0, -flm / (k2 / cfg.a**2))
+    ell = jnp.arange(cfg.Lmax + 1)
+    eig = ell * (ell + 1) / cfg.a**2
+    eig = jnp.where(eig == 0, jnp.inf, eig)
+    return -flm / eig[:, None]
 
 
 def psi_chi_from_vort_div(zeta_lm: jnp.ndarray, div_lm: jnp.ndarray, cfg: Config):
@@ -60,41 +108,67 @@ def psi_chi_from_vort_div(zeta_lm: jnp.ndarray, div_lm: jnp.ndarray, cfg: Config
     return psi, chi
 
 
-def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray, cfg: Config):
-    """Recover winds from streamfunction and velocity potential.
-
-    This uses spectral derivatives under a doubly-periodic approximation; it is
-    not a full spin-harmonic gradient but is sufficient for verifying algebraic
-    consistency between vorticity/divergence and winds.
-    """
-    nlat, nlon = psi_lm.shape[-2], psi_lm.shape[-1]
-    k_lat = _fftfreq(nlat, d=jnp.pi / nlat)
-    k_lon = _fftfreq(nlon, d=2 * jnp.pi / nlon)
+def _spectral_derivatives(flm: jnp.ndarray, cfg: Config):
+    """Return (d/dlon, d/dphi) of a scalar spectral field on the grid."""
 
     lats, _, _ = gaussian_grid(cfg)
-    # Keep latitude metrics 2D so wind components stay (nlat, nlon)
-    cos_lat = jnp.clip(jnp.cos(lats), 1e-6, None)[:, None]
+    P, dP_dphi, norms = _associated_legendre(cfg)
+    lat_dlon = []
+    lat_dphi = []
+    for m in range(cfg.Lmax + 1):
+        y_lat = norms[:, m][:, None] * P[:, m]
+        dy_dphi = norms[:, m][:, None] * dP_dphi[:, m]
+        lat_part = jnp.einsum('...l,li->...i', flm[..., m], y_lat)
+        lat_part_phi = jnp.einsum('...l,li->...i', flm[..., m], dy_dphi)
+        lat_dlon.append(1j * m * lat_part)
+        lat_dphi.append(lat_part_phi)
+    lat_dlon = jnp.stack(lat_dlon, axis=-1)
+    lat_dphi = jnp.stack(lat_dphi, axis=-1)
 
-    def grad(flm):
-        return synthesis_spec_to_grid(1j * k_lon[None, :] * flm, nlat, nlon), synthesis_spec_to_grid(
-            1j * k_lat[:, None] * flm, nlat, nlon
-        )
+    lon_spec_dlon = jnp.zeros(flm.shape[:-2] + (cfg.nlat, cfg.nlon), dtype=jnp.complex128)
+    lon_spec_dphi = jnp.zeros_like(lon_spec_dlon)
+    for m in range(cfg.Lmax + 1):
+        lon_spec_dlon = lon_spec_dlon.at[..., :, m].set(cfg.nlon * lat_dlon[..., m])
+        lon_spec_dphi = lon_spec_dphi.at[..., :, m].set(cfg.nlon * lat_dphi[..., m])
+        if m > 0:
+            factor = ((-1) ** m)
+            lon_spec_dlon = lon_spec_dlon.at[..., :, -m].set(cfg.nlon * jnp.conj(lat_dlon[..., m]) * factor)
+            lon_spec_dphi = lon_spec_dphi.at[..., :, -m].set(cfg.nlon * jnp.conj(lat_dphi[..., m]) * factor)
 
-    dchi_dlon, dchi_dlat = grad(chi_lm)
-    dpsi_dlon, dpsi_dlat = grad(psi_lm)
+    dlon_grid = jnp.fft.ifft(lon_spec_dlon, axis=-1).real
+    dphi_grid = jnp.fft.ifft(lon_spec_dphi, axis=-1).real
+    return dlon_grid, dphi_grid
+
+
+def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray, cfg: Config):
+    dchi_dlon, dchi_dphi = _spectral_derivatives(chi_lm, cfg)
+    dpsi_dlon, dpsi_dphi = _spectral_derivatives(psi_lm, cfg)
+
+    lats, _, _ = gaussian_grid(cfg)
+    cos_lat = jnp.cos(lats)[:, None]
     metric_lon = 1.0 / (cfg.a * cos_lat)
     metric_lat = 1.0 / cfg.a
-    u = metric_lon * dchi_dlon - metric_lat * dpsi_dlat
-    v = metric_lat * dchi_dlat + metric_lon * dpsi_dlon
+    u = metric_lon * dchi_dlon - metric_lat * dpsi_dphi
+    v = metric_lat * dchi_dphi + metric_lon * dpsi_dlon
     return u, v
 
 
 def vort_div_from_uv(u: jnp.ndarray, v: jnp.ndarray, cfg: Config):
-    u_lm = analysis_grid_to_spec(u)
-    v_lm = analysis_grid_to_spec(v)
-    nlat, nlon = u.shape[-2], u.shape[-1]
-    k_lat = _fftfreq(nlat, d=jnp.pi / nlat)
-    k_lon = _fftfreq(nlon, d=2 * jnp.pi / nlon)
-    vort_lm = 1j * k_lon[None, :] * v_lm - 1j * k_lat[:, None] * u_lm
-    div_lm = 1j * k_lon[None, :] * u_lm + 1j * k_lat[:, None] * v_lm
-    return vort_lm, div_lm
+    dudlon, _ = scalar_gradients(u, cfg)
+    dvdlon, _ = scalar_gradients(v, cfg)
+
+    lats, _, _ = gaussian_grid(cfg)
+    cos_lat = jnp.cos(lats)[:, None]
+
+    _, d_u_cos_dphi = scalar_gradients(u * cos_lat, cfg)
+    _, d_v_cos_dphi = scalar_gradients(v * cos_lat, cfg)
+
+    vort = (dvdlon - d_u_cos_dphi) / (cfg.a * cos_lat)
+    div = (dudlon + d_v_cos_dphi) / (cfg.a * cos_lat)
+    return analysis_grid_to_spec(vort, cfg), analysis_grid_to_spec(div, cfg)
+
+
+def scalar_gradients(field: jnp.ndarray, cfg: Config):
+    """Compute longitude/latitude derivatives of a grid scalar via SH transforms."""
+
+    return _spectral_derivatives(analysis_grid_to_spec(field, cfg), cfg)

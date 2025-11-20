@@ -13,13 +13,13 @@ class ModelState:
 
     Attributes
     ----------
-    zeta: complex array, shape (L, nlat, nlon)
-        Relative vorticity in spectral space.
-    div: complex array, shape (L, nlat, nlon)
-        Divergence in spectral space.
-    T: complex array, shape (L, nlat, nlon)
-        Temperature in spectral space.
-    lnps: complex array, shape (nlat, nlon)
+    zeta: complex array, shape (L, Lmax + 1, Lmax + 1)
+        Relative vorticity in spherical-harmonic space.
+    div: complex array, shape (L, Lmax + 1, Lmax + 1)
+        Divergence in spherical-harmonic space.
+    T: complex array, shape (L, Lmax + 1, Lmax + 1)
+        Temperature in spherical-harmonic space.
+    lnps: complex array, shape (Lmax + 1, Lmax + 1)
         Log surface pressure spectral coefficients.
     """
 
@@ -41,7 +41,7 @@ class StateTree(ModelState):
 
 
 def zeros_state(cfg: Config) -> StateTree:
-    shape = (cfg.L, cfg.nlat, cfg.nlon)
+    shape = (cfg.L, cfg.Lmax + 1, cfg.Lmax + 1)
     z = jnp.zeros(shape, dtype=jnp.complex128)
-    lnps = jnp.zeros((cfg.nlat, cfg.nlon), dtype=jnp.complex128)
+    lnps = jnp.zeros((cfg.Lmax + 1, cfg.Lmax + 1), dtype=jnp.complex128)
     return StateTree(zeta=z, div=z, T=z, lnps=lnps)
