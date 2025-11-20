@@ -1,9 +1,10 @@
 planet:
   radius: 6051800.0
   gravity: 8.87
-  rotation_period_days: 116.75
+  rotation_period_days: 243.025
   retrograde: true
   obliquity_deg: 2.64
+  orbital_period_days: 224.7
   solar_constant: 2600.0
   surface_pressure: 9200000.0
 numerics:

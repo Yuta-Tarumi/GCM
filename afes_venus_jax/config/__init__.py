@@ -28,6 +28,7 @@ class PlanetConfig:
     radius: float
     gravity: float
     rotation_rate: float
+    solar_day_rate: float
     solar_constant: float
     obliquity_deg: float
     surface_pressure: float
@@ -130,12 +131,19 @@ def _planet_from_dict(data: Mapping[str, Any]) -> PlanetConfig:
     rotation_rate = data.get("rotation_rate")
     if rotation_rate is None:
         retrograde = data.get("retrograde", True)
-        period = data.get("rotation_period_days", 116.75)
-        rotation_rate = ( -1 if retrograde else 1) * 2 * math.pi / (period * 86400.0)
+        period = float(data.get("rotation_period_days", 116.75))
+        rotation_rate = (-1 if retrograde else 1) * 2 * math.pi / (period * 86400.0)
+    orbital_period = data.get("orbital_period_days")
+    if orbital_period is None:
+        solar_day_rate = rotation_rate
+    else:
+        orbital_rate = 2 * math.pi / (float(orbital_period) * 86400.0)
+        solar_day_rate = rotation_rate - orbital_rate
     return PlanetConfig(
         radius=float(data["radius"]),
         gravity=float(data["gravity"]),
         rotation_rate=float(rotation_rate),
+        solar_day_rate=float(solar_day_rate),
         solar_constant=float(data["solar_constant"]),
         obliquity_deg=float(data.get("obliquity_deg", 2.64)),
         surface_pressure=float(data.get("surface_pressure", 9.2e6)),

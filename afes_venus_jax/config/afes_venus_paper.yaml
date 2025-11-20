@@ -1,9 +1,10 @@
 planet:
   radius: 6051800.0
   gravity: 8.87
-  rotation_period_days: 116.75
+  rotation_period_days: 243.025
   retrograde: true
   obliquity_deg: 2.64
+  orbital_period_days: 224.7
   solar_constant: 2600.0
   surface_pressure: 9200000.0
 numerics:
@@ -14,9 +15,10 @@ numerics:
   dt: 600.0
   semi_implicit_alpha: 0.5
   hyperdiff_order: 8
-  # A gentler smallest-scale e-folding time helps the thermal tides amplify
-  # instead of being wiped out immediately, matching the AFES-Venus setup.
-  hyperdiff_tau_smallest: 86400.0
+  # A much looser smallest-scale e-folding time keeps the thermal tides alive
+  # long enough to build the superrotating jet instead of damping them out
+  # before momentum can be pumped upward, mirroring the AFES-Venus settings.
+  hyperdiff_tau_smallest: 432000.0
   dealiasing: true
   leapfrog_raw_coeff: 0.04
 physics:
@@ -26,10 +28,10 @@ physics:
   enable_newtonian: true
   # Stronger diurnal heating is needed to reproduce the cloud-top jet speed
   # reported in the AFES-Venus study.
-  solar_peak_heating_K_per_day: 28.0
-  kz: 0.25
+  solar_peak_heating_K_per_day: 48.0
+  kz: 0.15
   # Looser low-level drag prevents the lower boundary layer from suppressing
   # the upward momentum transport that drives superrotation.
-  rayleigh_low_tau: 432000.0
+  rayleigh_low_tau: 3000000.0
   sponge_top_height: 90000.0
   sponge_tau: 86400.0
