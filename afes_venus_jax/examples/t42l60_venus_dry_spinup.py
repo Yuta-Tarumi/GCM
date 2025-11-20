@@ -7,7 +7,7 @@ from afes_venus_jax.config import DEFAULT_CFG
 from afes_venus_jax.spharm import analysis_grid_to_spec, synthesis_spec_to_grid
 from afes_venus_jax.state import zeros_state
 from afes_venus_jax.timestep import jit_step
-from afes_venus_jax.vertical import sigma_levels
+from afes_venus_jax.vertical import reference_temperature_profile
 
 
 def main():
@@ -22,11 +22,7 @@ def main():
 
     # Initialise a Venus-like dry-adiabatic column capped by the observed cold top
     # (e.g., VIRA; Seiff et al., 1985) instead of a hand-tuned linear profile.
-    _, sigma_full = sigma_levels(cfg)
-    kappa = cfg.R_gas / cfg.cp
-    T_surface = 735.0
-    T_cap = 170.0
-    T_profile = jnp.maximum(T_surface * sigma_full**kappa, T_cap)
+    T_profile = reference_temperature_profile(cfg)
     T_grid = jnp.broadcast_to(T_profile[:, None, None], (cfg.L, cfg.nlat, cfg.nlon))
     T_spec = analysis_grid_to_spec(T_grid)
     state = state.__class__(zeta=state.zeta, div=state.div, T=T_spec, lnps=state.lnps)

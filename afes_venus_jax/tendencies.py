@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 from .spharm import synthesis_spec_to_grid, psi_chi_from_vort_div, uv_from_psi_chi, analysis_grid_to_spec
 from .config import Config
+from .vertical import reference_temperature_profile, sigma_levels
 
 
 def nonlinear_tendencies(state, cfg: Config):
@@ -23,7 +24,7 @@ def nonlinear_tendencies(state, cfg: Config):
 
     vort_tend = advect(zeta)
     div_tend = advect(div)
-    T_tend = advect(T)
+    T_tend = advect(T) + heating_tendency(T, cfg)
     lnps_tend = -jnp.mean(div, axis=0)
 
     return {
@@ -32,3 +33,23 @@ def nonlinear_tendencies(state, cfg: Config):
         "T": analysis_grid_to_spec(T_tend),
         "lnps": analysis_grid_to_spec(lnps_tend),
     }
+
+
+def heating_tendency(T: jnp.ndarray, cfg: Config) -> jnp.ndarray:
+    """Thermodynamic tendency from diabatic processes."""
+
+    _, sigma_full = sigma_levels(cfg)
+    T_eq = reference_temperature_profile(cfg)[:, None, None]
+
+    # Vertical heat transfer (simple diffusion in sigma coordinates)
+    dT_dsigma = jnp.gradient(T, sigma_full, axis=0)
+    vertical_diffusion = cfg.kappa_heat * jnp.gradient(dT_dsigma, sigma_full, axis=0)
+
+    # Prescribed shortwave heating focused near the cloud tops
+    solar_shape = jnp.exp(-((sigma_full - cfg.solar_heating_peak_sigma) / cfg.solar_heating_width) ** 2)
+    solar_heating = cfg.solar_heating_rate * solar_shape[:, None, None]
+
+    # Newtonian cooling toward a reference profile
+    newtonian_cooling = -(T - T_eq) / cfg.tau_newtonian
+
+    return vertical_diffusion + solar_heating + newtonian_cooling

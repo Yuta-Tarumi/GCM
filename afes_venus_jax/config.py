@@ -23,6 +23,10 @@ class Config:
         Specific heat at constant pressure [J kg^-1 K^-1].
     ps_ref: float
         Reference surface pressure [Pa].
+    T_surface_ref: float
+        Reference surface temperature used for Newtonian cooling [K].
+    T_cap: float
+        Minimum temperature cap for the reference profile [K].
     Lmax: int
         Spectral truncation (triangular).
     nlat: int
@@ -41,6 +45,16 @@ class Config:
         Hyperdiffusion e-folding timescale at Lmax [s].
     order_hdiff: int
         Hyperdiffusion order.
+    tau_newtonian: float
+        Newtonian cooling timescale [s].
+    kappa_heat: float
+        Vertical thermal diffusivity in sigma coordinates [s^-1].
+    solar_heating_rate: float
+        Peak shortwave heating rate [K s^-1].
+    solar_heating_peak_sigma: float
+        Sigma level of peak shortwave heating.
+    solar_heating_width: float
+        Gaussian width of the shortwave heating profile in sigma.
     """
 
     a: float = 6_051_800.0
@@ -49,6 +63,8 @@ class Config:
     R_gas: float = 8.314462618 / 0.04401
     cp: float = 1000.0
     ps_ref: float = 9.2e6
+    T_surface_ref: float = 735.0
+    T_cap: float = 170.0
 
     Lmax: int = 42
     nlat: int = 64
@@ -59,6 +75,11 @@ class Config:
     ra: float = 0.05
     tau_hdiff: float = 0.1 * 86400.0
     order_hdiff: int = 4
+    tau_newtonian: float = 50.0 * 86400.0
+    kappa_heat: float = 5e-6
+    solar_heating_rate: float = 2.0 / 86400.0
+    solar_heating_peak_sigma: float = 0.1
+    solar_heating_width: float = 0.08
 
 
 DEFAULT_CFG = Config()
