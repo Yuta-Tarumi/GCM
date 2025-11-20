@@ -5,8 +5,8 @@ from .. import config, grid, spectral, vertical
 
 
 def _solar_cosine(lats: jnp.ndarray, lons: jnp.ndarray, time_s: float, cfg: config.ModelConfig) -> jnp.ndarray:
-    omega = cfg.planet.rotation_rate
-    subsolar_lon = (omega * time_s) % (2 * jnp.pi)
+    omega_solar = cfg.planet.solar_day_rate
+    subsolar_lon = (omega_solar * time_s) % (2 * jnp.pi)
     decl = jnp.deg2rad(cfg.planet.obliquity_deg)
     cos_mu = (
         jnp.sin(lats)[:, None] * jnp.sin(decl)
