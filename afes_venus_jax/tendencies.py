@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from .spharm import synthesis_spec_to_grid, psi_chi_from_vort_div, uv_from_psi_chi, analysis_grid_to_spec
 from .config import Config
-from .vertical import reference_temperature_profile, sigma_levels
+from .vertical import reference_temperature_profile, sigma_levels, vertical_coordinates
 
 
 def nonlinear_tendencies(state, cfg: Config):
@@ -22,10 +22,21 @@ def nonlinear_tendencies(state, cfg: Config):
         dlat = jnp.gradient(field, axis=-2)
         return -(u * dlon + v * dlat)
 
-    vort_tend = advect(zeta)
-    div_tend = advect(div)
-    T_tend = advect(T) + heating_tendency(T, cfg)
+    _, z_full = vertical_coordinates(cfg)
+    laplace_zeta = vertical_laplacian(zeta, z_full)
+    laplace_div = vertical_laplacian(div, z_full)
+
+    vort_tend = advect(zeta) + cfg.nu_vert * laplace_zeta
+    div_tend = advect(div) + cfg.nu_vert * laplace_div
+    T_tend = advect(T) + heating_tendency(T, cfg, z_full)
     lnps_tend = -jnp.mean(div, axis=0)
+
+    vort_tend = apply_surface_rayleigh(vort_tend, zeta, cfg)
+    div_tend = apply_surface_rayleigh(div_tend, div, cfg)
+
+    vort_tend, div_tend, T_tend = apply_upper_sponge(
+        vort_tend, div_tend, T_tend, zeta, div, T, z_full, cfg
+    )
 
     return {
         "zeta": analysis_grid_to_spec(vort_tend),
@@ -35,21 +46,15 @@ def nonlinear_tendencies(state, cfg: Config):
     }
 
 
-def heating_tendency(T: jnp.ndarray, cfg: Config) -> jnp.ndarray:
+def heating_tendency(T: jnp.ndarray, cfg: Config, z_full: jnp.ndarray) -> jnp.ndarray:
     """Thermodynamic tendency from diabatic processes."""
 
     _, sigma_full = sigma_levels(cfg)
     T_eq = reference_temperature_profile(cfg)[:, None, None]
 
-    # Vertical heat transfer (simple diffusion in sigma coordinates)
-    #
-    # Using the raw sigma spacing caused extremely large gradients near the
-    # model top because the exponentially stretched levels become tightly
-    # packed. Differencing with unit spacing keeps the diffusion operator
-    # gentle enough for the Venus spin-up test without altering the intended
-    # qualitative behaviour.
-    dT_dsigma = jnp.gradient(T, axis=0)
-    vertical_diffusion = cfg.kappa_heat * jnp.gradient(dT_dsigma, axis=0)
+    dT_dz = jnp.gradient(T, z_full, axis=0)
+    d2T_dz2 = jnp.gradient(dT_dz, z_full, axis=0)
+    vertical_diffusion = cfg.nu_vert * d2T_dz2
 
     # Prescribed shortwave heating focused near the cloud tops
     solar_shape = jnp.exp(-((sigma_full - cfg.solar_heating_peak_sigma) / cfg.solar_heating_width) ** 2)
@@ -59,3 +64,43 @@ def heating_tendency(T: jnp.ndarray, cfg: Config) -> jnp.ndarray:
     newtonian_cooling = -(T - T_eq) / cfg.tau_newtonian
 
     return vertical_diffusion + solar_heating + newtonian_cooling
+
+
+def vertical_laplacian(field: jnp.ndarray, z_full: jnp.ndarray) -> jnp.ndarray:
+    """Second derivative with respect to height for vertically stacked fields."""
+
+    d_dz = jnp.gradient(field, z_full, axis=0)
+    return jnp.gradient(d_dz, z_full, axis=0)
+
+
+def apply_surface_rayleigh(tendency: jnp.ndarray, field: jnp.ndarray, cfg: Config) -> jnp.ndarray:
+    """Apply Rayleigh friction to the lowest model level."""
+
+    damping = -field[0] / cfg.tau_rayleigh_surface
+    return tendency.at[0].add(damping)
+
+
+def apply_upper_sponge(
+    vort_tend: jnp.ndarray,
+    div_tend: jnp.ndarray,
+    T_tend: jnp.ndarray,
+    zeta: jnp.ndarray,
+    div: jnp.ndarray,
+    T: jnp.ndarray,
+    z_full: jnp.ndarray,
+    cfg: Config,
+):
+    """Damp eddy components above the sponge start altitude."""
+
+    ramp = jnp.clip((z_full - cfg.sponge_start_alt) / (z_full[-1] - cfg.sponge_start_alt), 0.0, 1.0)
+    sponge_coeff = (ramp**cfg.sponge_exponent) / cfg.tau_sponge_top
+
+    def damp(field_tend, field):
+        zonal_mean = field.mean(axis=-1, keepdims=True)
+        eddy = field - zonal_mean
+        return field_tend - sponge_coeff[:, None, None] * eddy
+
+    vort_tend = damp(vort_tend, zeta)
+    div_tend = damp(div_tend, div)
+    T_tend = damp(T_tend, T)
+    return vort_tend, div_tend, T_tend

@@ -6,6 +6,25 @@ import jax.numpy as jnp
 from .config import Config
 
 
+def vertical_coordinates(cfg: Config):
+    """Return evenly spaced altitude half/full levels.
+
+    The configuration follows the AFES-Venus setup with 2 km spacing from the
+    surface to 120 km.
+
+    Returns
+    -------
+    z_half: jnp.ndarray
+        Half-level altitudes [m] with ``L + 1`` entries.
+    z_full: jnp.ndarray
+        Full-level altitudes [m] with ``L`` entries.
+    """
+
+    z_half = jnp.linspace(0.0, 120e3, cfg.L + 1)
+    z_full = 0.5 * (z_half[:-1] + z_half[1:])
+    return z_half, z_full
+
+
 def sigma_levels(cfg: Config):
     """Construct Lorenz sigma levels using an exponential scale height.
 
@@ -17,7 +36,7 @@ def sigma_levels(cfg: Config):
         Full-level sigma values, shape (L,).
     """
     L = cfg.L
-    z_half = jnp.linspace(0.0, 120e3, L + 1)
+    z_half, _ = vertical_coordinates(cfg)
     H_ref = 15_000.0
     sigma_half = jnp.exp(-z_half / H_ref)
     sigma_full = 0.5 * (sigma_half[:-1] + sigma_half[1:])

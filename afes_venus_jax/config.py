@@ -47,8 +47,16 @@ class Config:
         Hyperdiffusion order.
     tau_newtonian: float
         Newtonian cooling timescale [s].
-    kappa_heat: float
-        Vertical thermal diffusivity in sigma coordinates [s^-1].
+    nu_vert: float
+        Vertical eddy diffusivity/viscosity [m^2 s^-1].
+    tau_rayleigh_surface: float
+        Rayleigh friction e-folding time applied at the lowest level [s].
+    sponge_start_alt: float
+        Altitude [m] where the upper-level sponge begins (eddies only).
+    tau_sponge_top: float
+        E-folding time [s] for eddy damping at the model top.
+    sponge_exponent: float
+        Controls how quickly the sponge ramps up with height (>=1).
     solar_heating_rate: float
         Peak shortwave heating rate [K s^-1].
     solar_heating_peak_sigma: float
@@ -74,9 +82,13 @@ class Config:
     alpha: float = 0.5
     ra: float = 0.05
     tau_hdiff: float = 0.1 * 86400.0
-    order_hdiff: int = 4
+    order_hdiff: int = 2
     tau_newtonian: float = 50.0 * 86400.0
-    kappa_heat: float = 5e-6
+    nu_vert: float = 0.0015
+    tau_rayleigh_surface: float = 0.5 * 86400.0
+    sponge_start_alt: float = 80e3
+    tau_sponge_top: float = 0.1 * 86400.0
+    sponge_exponent: float = 2.0
     solar_heating_rate: float = 2.0 / 86400.0
     solar_heating_peak_sigma: float = 0.1
     solar_heating_width: float = 0.08
