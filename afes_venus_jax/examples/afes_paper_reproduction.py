@@ -13,6 +13,7 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
+import jax
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -28,6 +29,13 @@ def _band_mean_zonal_wind(u_fields: np.ndarray, lats: np.ndarray, half_width_deg
     lat_deg = np.rad2deg(lats)
     mask = np.abs(lat_deg) <= half_width_deg
     return u_fields[:, :, mask, :].mean(axis=(2, 3))
+
+
+def _preferred_device() -> jax.Device:
+    for dev in jax.devices():
+        if dev.platform == "gpu":
+            return dev
+    return jax.devices()[0]
 
 
 def plot_equatorial_spinup(
@@ -106,12 +114,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    device = _preferred_device()
+    print(f"Using JAX device: {device.platform} (id={device.id})")
+
     cfg = config.load_config(args.config)
     frames, profiles, times, lats, lons, heights = collect_superrotation_history(
         nsteps=args.nsteps,
         sample_interval=args.sample_interval,
         seed=args.seed,
         equatorial_half_width=args.equator_band,
+        device=device,
         cfg=cfg,
     )
 
