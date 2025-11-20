@@ -1,6 +1,9 @@
 """Horizontal hyperdiffusion and vertical mixing."""
 from __future__ import annotations
 import jax.numpy as jnp
+from functools import lru_cache
+import numpy as np
+from numpy.polynomial.legendre import leggauss
 from . import config, spectral, vertical
 from .state import ModelState
 
@@ -12,9 +15,49 @@ def _iterated_laplacian(field: jnp.ndarray, order: int) -> jnp.ndarray:
     return result
 
 
+def _laplacian_numpy(field: np.ndarray, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
+    a = config.planet.radius
+    dlon = float(lons[1] - lons[0])
+    dphi = float(lats[1] - lats[0])
+    cosphi = np.clip(np.cos(lats), 1e-7, None)[:, None]
+    tanphi = np.tan(lats)[:, None]
+    f_lon = (np.roll(field, -1, axis=-1) - 2 * field + np.roll(field, 1, axis=-1)) / (a**2 * dlon**2)
+    f_phi = (np.roll(field, -1, axis=-2) - 2 * field + np.roll(field, 1, axis=-2)) / (a**2 * dphi**2)
+    dfdphi = (np.roll(field, -1, axis=-2) - np.roll(field, 1, axis=-2)) / (2 * dphi)
+    metric = (tanphi / (a**2)) * dfdphi
+    return f_lon / (cosphi**2) + f_phi + metric
+
+
+def _gaussian_grid_numpy(nlat: int, nlon: int) -> tuple[np.ndarray, np.ndarray]:
+    mu, _ = leggauss(nlat)
+    lats = np.arcsin(mu)
+    lons = np.linspace(0.0, 2 * np.pi, nlon, endpoint=False)
+    return lats, lons
+
+
+@lru_cache(maxsize=None)
+def _max_hyperdiff_eigenvalue(nlev: int, nlat: int, nlon: int, order: int) -> float:
+    """Estimate the largest eigenvalue of the iterated Laplacian on this grid."""
+
+    lats_np, lons_np = _gaussian_grid_numpy(nlat, nlon)
+    m = max(1, (nlon // 2) - 1)
+    lon_wave = np.sin(m * lons_np)[None, None, :]
+    mode = np.broadcast_to(lon_wave, (nlev, nlat, nlon)).astype(np.float64)
+    lap = mode.copy()
+    for _ in range(order // 2):
+        lap = _laplacian_numpy(lap, lats_np, lons_np)
+    eig = np.max(np.abs(lap) / np.maximum(np.abs(mode), 1e-12))
+    return float(eig)
+
+
 def _hyperdiff_coefficient(cfg: config.ModelConfig) -> float:
-    kmax = cfg.numerics.nlon / 2
-    return 1.0 / (cfg.numerics.hyperdiff_tau_smallest * (kmax ** cfg.numerics.hyperdiff_order))
+    eig = _max_hyperdiff_eigenvalue(
+        cfg.numerics.nlev,
+        cfg.numerics.nlat,
+        cfg.numerics.nlon,
+        cfg.numerics.hyperdiff_order,
+    )
+    return 1.0 / (cfg.numerics.hyperdiff_tau_smallest * eig)
 
 
 def hyperdiffusion_tendency(field: jnp.ndarray, cfg: config.ModelConfig | None = None) -> jnp.ndarray:
