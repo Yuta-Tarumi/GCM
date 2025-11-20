@@ -1,9 +1,11 @@
 """Horizontal hyperdiffusion and vertical mixing."""
 from __future__ import annotations
-import jax.numpy as jnp
 from functools import lru_cache
+
+import jax.numpy as jnp
 import numpy as np
 from numpy.polynomial.legendre import leggauss
+
 from . import config, spectral, vertical
 from .state import ModelState
 
