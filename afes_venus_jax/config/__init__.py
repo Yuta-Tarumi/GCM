@@ -158,7 +158,7 @@ def _numerics_from_dict(data: Mapping[str, Any]) -> NumericsConfig:
         nlev=int(data.get("nlev", 60)),
         dt=float(data.get("dt", 1200.0)),
         semi_implicit_alpha=float(data.get("semi_implicit_alpha", 0.5)),
-        hyperdiff_order=int(data.get("hyperdiff_order", 8)),
+        hyperdiff_order=int(data.get("hyperdiff_order", 4)),
         hyperdiff_tau_smallest=float(data.get("hyperdiff_tau_smallest", 0.1 * 86400.0)),
         dealiasing=bool(data.get("dealiasing", True)),
         leapfrog_raw_coeff=float(data.get("leapfrog_raw_coeff", 0.04)),
