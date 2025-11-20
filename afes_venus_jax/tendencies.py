@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
-from .spharm import synthesis_spec_to_grid, psi_chi_from_vort_div, uv_from_psi_chi, analysis_grid_to_spec
+from .spharm import (
+    synthesis_spec_to_grid,
+    psi_chi_from_vort_div,
+    uv_from_psi_chi,
+    analysis_grid_to_spec,
+    scalar_gradients,
+)
 from .config import Config
 from .grid import gaussian_grid
 from .vertical import reference_temperature_profile, sigma_levels, vertical_coordinates
@@ -13,21 +19,16 @@ def nonlinear_tendencies(state, cfg: Config):
     """Compute advective tendencies for zeta, div, temperature, and log-ps."""
     psi, chi = psi_chi_from_vort_div(state.zeta, state.div, cfg)
     u, v = uv_from_psi_chi(psi, chi, cfg)
-    zeta = synthesis_spec_to_grid(state.zeta)
-    div = synthesis_spec_to_grid(state.div)
-    T = synthesis_spec_to_grid(state.T)
-    lnps = synthesis_spec_to_grid(state.lnps, cfg.nlat, cfg.nlon)
+    zeta = synthesis_spec_to_grid(state.zeta, cfg)
+    div = synthesis_spec_to_grid(state.div, cfg)
+    T = synthesis_spec_to_grid(state.T, cfg)
+    lnps = synthesis_spec_to_grid(state.lnps, cfg)
 
     lats, _, _ = gaussian_grid(cfg)
-    cos_lat = jnp.clip(jnp.cos(lats), 1e-6, None)[None, :, None]
-    dlon_spacing = 2 * jnp.pi / cfg.nlon
-    dlat_spacing = jnp.pi / cfg.nlat
+    cos_lat = jnp.cos(lats)[None, :, None]
 
     def advect(field):
-        # Use wrapped central differences in both longitude and latitude so the
-        # discrete gradients line up with the doubly periodic FFT grid.
-        dlon = (jnp.roll(field, -1, axis=-1) - jnp.roll(field, 1, axis=-1)) / (2 * dlon_spacing)
-        dlat = (jnp.roll(field, -1, axis=-2) - jnp.roll(field, 1, axis=-2)) / (2 * dlat_spacing)
+        dlon, dlat = scalar_gradients(field, cfg)
         metric_u = dlon / (cfg.a * cos_lat)
         metric_v = dlat / cfg.a
         return -(u * metric_u + v * metric_v)
@@ -49,10 +50,10 @@ def nonlinear_tendencies(state, cfg: Config):
     )
 
     return {
-        "zeta": analysis_grid_to_spec(vort_tend),
-        "div": analysis_grid_to_spec(div_tend),
-        "T": analysis_grid_to_spec(T_tend),
-        "lnps": analysis_grid_to_spec(lnps_tend),
+        "zeta": analysis_grid_to_spec(vort_tend, cfg),
+        "div": analysis_grid_to_spec(div_tend, cfg),
+        "T": analysis_grid_to_spec(T_tend, cfg),
+        "lnps": analysis_grid_to_spec(lnps_tend, cfg),
     }
 
 
