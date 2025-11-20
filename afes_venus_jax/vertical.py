@@ -24,6 +24,14 @@ def sigma_levels(cfg: Config):
     return sigma_half, sigma_full
 
 
+def reference_temperature_profile(cfg: Config) -> jnp.ndarray:
+    """Dry-adiabatic reference profile capped by a minimum temperature."""
+
+    _, sigma_full = sigma_levels(cfg)
+    kappa = cfg.R_gas / cfg.cp
+    return jnp.maximum(cfg.T_surface_ref * sigma_full**kappa, cfg.T_cap)
+
+
 def hydrostatic_geopotential(T: jnp.ndarray, lnps: jnp.ndarray, cfg: Config) -> jnp.ndarray:
     """Integrate hydrostatic balance to obtain geopotential.
 
