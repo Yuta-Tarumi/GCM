@@ -5,7 +5,6 @@ import argparse
 import dataclasses
 from pathlib import Path
 
-import jax
 import jax.numpy as jnp
 import matplotlib
 
@@ -13,10 +12,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from afes_venus_jax.config import DEFAULT_CFG, Config
 from afes_venus_jax.grid import gaussian_grid
-from afes_venus_jax.spharm import analysis_grid_to_spec, psi_chi_from_vort_div, synthesis_spec_to_grid, uv_from_psi_chi
-from afes_venus_jax.state import zeros_state
+from afes_venus_jax.initial_conditions import superrotating_initial_state
+from afes_venus_jax.spharm import psi_chi_from_vort_div, synthesis_spec_to_grid, uv_from_psi_chi
 from afes_venus_jax.timestep import jit_step
-from afes_venus_jax.vertical import reference_temperature_profile
 
 def save_wind_field(state, cfg: Config, step: int, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -64,19 +62,7 @@ def main():
             Lmax=args.lmax or cfg.Lmax,
             L=args.levels or cfg.L,
         )
-    state = zeros_state(cfg)
-
-    # Add small vorticity perturbations in grid space
-    key = jax.random.PRNGKey(0)
-    grid_noise = 1e-3 * jax.random.normal(key, (cfg.L, cfg.nlat, cfg.nlon))
-    noise_spec = analysis_grid_to_spec(grid_noise, cfg)
-    state = state.__class__(zeta=state.zeta + noise_spec, div=state.div, T=state.T, lnps=state.lnps)
-
-    # Initialise a Venus-like dry-adiabatic column capped by the observed cold top
-    T_profile = reference_temperature_profile(cfg)
-    T_grid = jnp.broadcast_to(T_profile[:, None, None], (cfg.L, cfg.nlat, cfg.nlon))
-    T_spec = analysis_grid_to_spec(T_grid, cfg)
-    state = state.__class__(zeta=state.zeta, div=state.div, T=T_spec, lnps=state.lnps)
+    state = superrotating_initial_state(cfg)
     snapshot_steps = set(range(0, args.steps + 1, max(1, args.snapshot_every)))
 
     save_wind_field(state, cfg, step=0, out_dir=args.output_dir)
