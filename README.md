@@ -55,3 +55,18 @@ python -m afes_venus_jax.examples.superrotation_demo --nsteps 4000 --sample-inte
 Adjust `--level-height-km` (default 55 km) to target different layers, and use
 `--equator-band` to control how wide of a latitude band feeds the equatorial
 mean profile.
+
+To mirror the AFES-Venus paper setup more closely—including the Tomasko-style
+solar heating profile, stronger hyperdiffusion, and explicit sponge-layer
+damping—use the dedicated configuration and reproduction helper. The defaults
+now start from a weaker perturbation (to avoid runaway jets) and the script
+prints a quick comparison against the 40–120 m s⁻¹ cloud-top jets reported in
+the paper so you can tell if additional spin-up steps are needed:
+
+```bash
+python -m afes_venus_jax.examples.afes_paper_reproduction --config afes_venus_jax/config/afes_venus_paper.yaml \
+  --nsteps 40 --sample-interval 4 --movie figures/afes_paper_superrotation.gif
+```
+
+The script writes a GIF plus diagnostic PNGs under `figures/` that can be
+compared against the paper's superrotation experiments.

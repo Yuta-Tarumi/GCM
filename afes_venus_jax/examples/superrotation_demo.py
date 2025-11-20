@@ -22,7 +22,16 @@ from .. import config, grid, spectral, state, vertical
 from ..dynamics import integrators
 
 
-def _random_initial_state(seed: int, amplitude: float = 3e-5) -> state.ModelState:
+def _random_initial_state(seed: int, amplitude: float = 1e-7) -> state.ModelState:
+    """Seed a weak, zero-divergence perturbation around an isothermal state.
+
+    The previous default (``3e-5``) injected vorticity energetic enough to blow up
+    the AFES-Venus paper configuration before the zonal-mean jet could form.
+    Using a gentler amplitude keeps the early integration linear while the
+    Newtonian/solar forcings build the circulation toward the paper-like
+    superrotation.
+    """
+
     base = state.initial_isothermal()
     key = jax.random.PRNGKey(seed)
     noise = amplitude * (jax.random.normal(key, base.zeta.shape) + 1j * 0.0)
@@ -56,8 +65,10 @@ def collect_superrotation_history(
     seed: int,
     equatorial_half_width: float,
     device: jax.Device | None = None,
+    cfg: config.ModelConfig | None = None,
 ):
-    cfg = config.DEFAULT
+    if cfg is None:
+        cfg = config.DEFAULT
     cur = _random_initial_state(seed)
     if device is not None:
         cur = jax.tree_util.tree_map(lambda arr: jax.device_put(arr, device), cur)
@@ -142,13 +153,16 @@ def render_movie(
     times: np.ndarray,
     path: str,
     fps: int = 6,
+    cfg: config.ModelConfig | None = None,
 ):
+    if cfg is None:
+        cfg = config.DEFAULT
     output = pathlib.Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     level_index = int(np.argmin(np.abs((heights / 1000.0) - level_height_km)))
     vmax = max(float(np.max(np.abs(frame[level_index]))) for frame in frames)
     profile_max = max(float(np.max(np.abs(profile))) for profile in profiles)
-    venus_day = config.DEFAULT.rotation_period
+    venus_day = cfg.rotation_period
 
     with imageio.get_writer(output, mode="I", fps=fps) as writer:
         for u_field, profile, t in zip(frames, profiles, times):
@@ -197,7 +211,15 @@ def main() -> None:
         default="venus_superrotation.gif",
         help="Filename for the rendered animation",
     )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Optional YAML configuration overriding the default Venus setup",
+    )
     args = parser.parse_args()
+
+    cfg = config.load_config(args.config) if args.config is not None else config.DEFAULT
 
     frames, profiles, times, lats, lons, heights = collect_superrotation_history(
         nsteps=args.nsteps,
@@ -205,6 +227,7 @@ def main() -> None:
         seed=args.seed,
         equatorial_half_width=args.equator_band,
         device=None,
+        cfg=cfg,
     )
 
     movie_path = render_movie(
@@ -217,6 +240,7 @@ def main() -> None:
         times=times,
         path=args.output,
         fps=args.fps,
+        cfg=cfg,
     )
     print(f"Wrote movie to {movie_path.resolve()}")
 

@@ -1,0 +1,29 @@
+planet:
+  radius: 6051800.0
+  gravity: 8.87
+  rotation_period_days: 116.75
+  retrograde: true
+  obliquity_deg: 2.64
+  solar_constant: 2600.0
+  surface_pressure: 9200000.0
+numerics:
+  truncation: 42
+  nlat: 64
+  nlon: 128
+  nlev: 60
+  dt: 600.0
+  semi_implicit_alpha: 0.5
+  hyperdiff_order: 8
+  hyperdiff_tau_smallest: 3600.0
+  dealiasing: true
+  leapfrog_raw_coeff: 0.04
+physics:
+  solar_profile: tomasko1980
+  newtonian_profile: crisp1989
+  enable_solar: true
+  enable_newtonian: true
+  solar_peak_heating_K_per_day: 18.0
+  kz: 0.2
+  rayleigh_low_tau: 129600.0
+  sponge_top_height: 90000.0
+  sponge_tau: 21600.0

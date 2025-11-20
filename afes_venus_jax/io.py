@@ -78,10 +78,10 @@ def history_dataset(states: list[ModelState], times: list[float], cfg: config.Mo
     if xr is None:
         return SimpleDataset(data_vars, coords)
     xr_data = {
-        "zeta": ("time", "level", "lat", "lon", data_vars["zeta"]),
-        "div": ("time", "level", "lat", "lon", data_vars["div"]),
-        "T": ("time", "level", "lat", "lon", data_vars["T"]),
-        "lnps": ("time", "lat", "lon", data_vars["lnps"]),
+        "zeta": (("time", "level", "lat", "lon"), data_vars["zeta"]),
+        "div": (("time", "level", "lat", "lon"), data_vars["div"]),
+        "T": (("time", "level", "lat", "lon"), data_vars["T"]),
+        "lnps": (("time", "lat", "lon"), data_vars["lnps"]),
     }
     return xr.Dataset(data_vars=xr_data, coords=coords)
 
