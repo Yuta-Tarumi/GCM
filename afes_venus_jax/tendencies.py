@@ -7,6 +7,7 @@ from .spharm import (
     synthesis_spec_to_grid,
     psi_chi_from_vort_div,
     uv_from_psi_chi,
+    vort_div_from_uv,
     analysis_grid_to_spec,
     scalar_gradients,
 )
@@ -26,6 +27,7 @@ def nonlinear_tendencies(state, cfg: Config):
 
     lats, _, _ = gaussian_grid(cfg)
     cos_lat = jnp.cos(lats)[None, :, None]
+    f = 2.0 * cfg.Omega * jnp.sin(lats)[None, :, None]
 
     def advect(field):
         dlon, dlat = scalar_gradients(field, cfg)
@@ -39,6 +41,15 @@ def nonlinear_tendencies(state, cfg: Config):
 
     vort_tend = advect(zeta) + cfg.nu_vert * laplace_zeta
     div_tend = advect(div) + cfg.nu_vert * laplace_div
+    # Linear Coriolis acceleration that couples the fast zonal flow to
+    # meridional motion and divergence. Without this term the model evolves
+    # purely by advection/diffusion and the meridional wind can stagnate even
+    # when zonal winds are strong.
+    du_coriolis = f * v
+    dv_coriolis = -f * u
+    vort_coriolis, div_coriolis = vort_div_from_uv(du_coriolis, dv_coriolis, cfg)
+    vort_tend = vort_tend + synthesis_spec_to_grid(vort_coriolis, cfg)
+    div_tend = div_tend + synthesis_spec_to_grid(div_coriolis, cfg)
     T_tend = advect(T) + heating_tendency(T, cfg, z_full)
     lnps_tend = -jnp.mean(div, axis=0)
 
