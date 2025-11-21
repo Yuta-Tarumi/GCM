@@ -88,6 +88,18 @@ def parse_args():
     parser.add_argument("--lmax", type=int, default=None, help="Optional spectral truncation override")
     parser.add_argument("--levels", type=int, default=None, help="Optional vertical level count override")
     parser.add_argument(
+        "--solar-diurnal-contrast",
+        type=float,
+        default=DEFAULT_CFG.solar_diurnal_contrast,
+        help="Fractional day-night contrast for shortwave heating (0=uniform, 1=zero at local midnight)",
+    )
+    parser.add_argument(
+        "--subsolar-longitude-deg",
+        type=float,
+        default=0.0,
+        help="Longitude (deg) of the subsolar point where heating peaks",
+    )
+    parser.add_argument(
         "--plot-heights-km",
         type=str,
         default="0,30,60,90",
@@ -98,15 +110,15 @@ def parse_args():
 
 def main():
     args = parse_args()
-    cfg = DEFAULT_CFG
-    if any(x is not None for x in (args.nlat, args.nlon, args.lmax, args.levels)):
-        cfg = dataclasses.replace(
-            cfg,
-            nlat=args.nlat or cfg.nlat,
-            nlon=args.nlon or cfg.nlon,
-            Lmax=args.lmax or cfg.Lmax,
-            L=args.levels or cfg.L,
-        )
+    cfg = dataclasses.replace(
+        DEFAULT_CFG,
+        nlat=args.nlat or DEFAULT_CFG.nlat,
+        nlon=args.nlon or DEFAULT_CFG.nlon,
+        Lmax=args.lmax or DEFAULT_CFG.Lmax,
+        L=args.levels or DEFAULT_CFG.L,
+        solar_diurnal_contrast=args.solar_diurnal_contrast,
+        subsolar_longitude=jnp.deg2rad(args.subsolar_longitude_deg),
+    )
     state = superrotating_initial_state(cfg)
     snapshot_steps = set(range(0, args.steps + 1, max(1, args.snapshot_every)))
 
