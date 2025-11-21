@@ -101,7 +101,8 @@ def plot_initial_snapshot(mstate: state.ModelState, levels: list[int] | None = N
     u, v = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
     T_grid = sph.synthesis_spec_to_grid(mstate.T, cfg.nlat, cfg.nlon)
     lnps_grid = sph.synthesis_spec_to_grid(mstate.lnps, cfg.nlat, cfg.nlon)
-    p_grid = cfg.ps_ref * jnp.exp(lnps_grid)
+    sigma_full, _ = vertical.sigma_levels()
+    p_grid = sigma_full[:, None, None] * cfg.ps_ref * jnp.exp(lnps_grid)
 
     if levels is None:
         candidates = [0, cfg.L // 4, cfg.L // 2, (3 * cfg.L) // 4, cfg.L - 1]
@@ -110,7 +111,7 @@ def plot_initial_snapshot(mstate: state.ModelState, levels: list[int] | None = N
     lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
     lon2d, lat2d = np.meshgrid(np.rad2deg(np.array(lons)), np.rad2deg(np.array(lats)))
 
-    fields = [(u, "u [m/s]"), (v, "v [m/s]"), (T_grid, "T [K]"), (p_grid[None, ...], "p [Pa]")]
+    fields = [(u, "u [m/s]"), (v, "v [m/s]"), (T_grid, "T [K]"), (p_grid, "p [Pa]")]
 
     fig, axes = plt.subplots(len(levels), len(fields), figsize=(4 * len(fields), 3 * len(levels)), constrained_layout=True)
     if len(levels) == 1:
