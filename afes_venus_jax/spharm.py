@@ -16,8 +16,13 @@ def _norm_factor(ell: jnp.ndarray, m: jnp.ndarray):
     )
 
 
-@functools.cache
 def _associated_legendre(cfg: Config):
+    return _associated_legendre_cached(cfg.Lmax, cfg.nlat)
+
+
+@functools.lru_cache(maxsize=None)
+def _associated_legendre_cached(Lmax: int, nlat: int):
+    cfg = Config(Lmax=Lmax, nlat=nlat, nlon=2 * nlat)
     lats, _, _ = gaussian_grid(cfg)
     mu = jnp.sin(lats)
     cos_lat = jnp.cos(lats)
