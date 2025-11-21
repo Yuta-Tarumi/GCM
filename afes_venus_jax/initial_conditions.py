@@ -92,7 +92,13 @@ def superrotating_initial_state(cfg: Config) -> StateTree:
     cos_lat = jnp.cos(lats)
 
     u_eq = _solid_body_wind_profile(cfg)
+    # Broadcast the zonal-mean solid-body wind across all longitudes. Without
+    # the explicit longitude dimension the FFT-based spectral analysis sees a
+    # single sample in longitude and rescales the field, collapsing the wind
+    # amplitude toward zero. Repeating the field along ``nlon`` preserves the
+    # intended cos(latitude) structure and 100 m s^-1 equatorial speed.
     u_grid = u_eq[:, None, None] * cos_lat[None, :, None]
+    u_grid = jnp.broadcast_to(u_grid, (cfg.L, cfg.nlat, cfg.nlon))
     v_grid = jnp.zeros_like(u_grid)
     zeta_spec, div_spec = vort_div_from_uv(u_grid, v_grid, cfg)
 
