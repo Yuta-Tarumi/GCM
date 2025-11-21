@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 
 import afes_venus_jax.config as cfg
@@ -12,18 +11,29 @@ import afes_venus_jax.spharm as sph
 import afes_venus_jax.state as state
 import afes_venus_jax.tendencies as tend
 import afes_venus_jax.timestep as timestep
+import afes_venus_jax.vertical as vertical
+
+
+def _zonal_wind_profile(z_full: jnp.ndarray, u_max: float = 100.0, z_peak: float = 70_000.0):
+    """Return the target zonal wind amplitude for each full level."""
+
+    ramp = jnp.clip(z_full / z_peak, 0.0, 1.0)
+    return u_max * ramp
 
 
 def initial_condition(option: int = 1):
     base = state.zeros_state()
     if option == 1:
-        # Solid-body rotation matching the planetary spin
+        # Solid-body rotation with altitude-dependent amplitude.
         lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
-        lon2d, lat2d = np.meshgrid(np.array(lons), np.array(lats))
-        psi_grid = -cfg.a**2 * cfg.Omega * (lat2d / 2 + np.sin(2 * lat2d) / 4)
-        psi_spec = sph.analysis_grid_to_spec(jnp.array(psi_grid))
-        zeta_spec = sph.lap_spec(psi_spec)
+        lat_component = jnp.array(lats) / 2 + jnp.sin(2 * jnp.array(lats)) / 4
+        lon_axis = jnp.ones((cfg.nlon,))
+        z_full, _ = vertical.level_altitudes()
+        u_profile = _zonal_wind_profile(z_full)
+        psi_levels = -cfg.a * u_profile[:, None, None] * lat_component[None, :, None] * lon_axis
         for k in range(cfg.L):
+            psi_spec = sph.analysis_grid_to_spec(psi_levels[k])
+            zeta_spec = sph.lap_spec(psi_spec)
             base.zeta = base.zeta.at[k].set(zeta_spec)
     else:
         key = jax.random.PRNGKey(0)
@@ -42,6 +52,8 @@ def initial_condition(option: int = 1):
 
 def plot_initial_snapshot(mstate: state.ModelState, levels: list[int] | None = None, filename: str = "initial_snapshot.png"):
     """Save a quick-look of u, v, T, and p for representative levels."""
+
+    import matplotlib.pyplot as plt
 
     psi, chi = sph.psi_chi_from_zeta_div(mstate.zeta, mstate.div)
     u, v = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
