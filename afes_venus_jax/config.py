@@ -44,6 +44,21 @@ def _bool_env(name: str, default: bool) -> bool:
     return raw.lower() not in {"false", "0", ""}
 
 
+def _float_env(name: str, default: float, allow_none: bool = False) -> float | None:
+    """Read a floating-point value from the environment if provided."""
+
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    if allow_none and raw == "":
+        return None
+
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 # Numerical defaults
 _default_Lmax = 42  # spectral truncation (triangular T42)
 _default_nlat = 64
@@ -54,8 +69,9 @@ alpha = 0.5  # SI off-centering
 ra = 0.05  # Robert–Asselin/RAW filter strength
 ra_williams_factor = 0.53  # Williams correction factor for RAW filter
 use_raw_filter = _bool_env("AFES_VENUS_JAX_USE_RAW_FILTER", True)  # enable the higher-order RAW time filter
-use_semi_lagrangian_advection = _bool_env("AFES_VENUS_JAX_USE_SEMI_LAGRANGIAN_ADVECTION", False)
-tau_div_damp = None  # optional scale-selective divergence damping timescale [s]; disabled when None
+use_semi_lagrangian_advection = _bool_env("AFES_VENUS_JAX_USE_SEMI_LAGRANGIAN_ADVECTION", True)
+# Apply weak divergence damping by default to mirror AFES-Venus production runs.
+tau_div_damp = _float_env("AFES_VENUS_JAX_TAU_DIV_DAMP", 0.5 * 86400.0, allow_none=True)
 order_div_damp = 1  # Laplacian power for divergence damping (1 = ∇², 2 = ∇⁴, ...)
 tau_hdiff = 0.1 * 86400.0  # e-folding time for hyperdiffusion [s]
 order_hdiff = 4
@@ -63,7 +79,7 @@ order_hdiff = 4
 
 Lmax = _int_env("AFES_VENUS_JAX_LMAX", _default_Lmax)
 s2fft_sampling = os.getenv("AFES_VENUS_JAX_S2FFT_SAMPLING", "mw").lower()
-use_s2fft = os.getenv("AFES_VENUS_JAX_USE_S2FFT", "false").lower() not in {"false", "0", ""}
+use_s2fft = os.getenv("AFES_VENUS_JAX_USE_S2FFT", "true").lower() not in {"false", "0", ""}
 
 if use_s2fft and _s2fft_available:
     # S2FFT expects band-limit L such that ell < L.

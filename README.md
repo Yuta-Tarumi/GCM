@@ -32,15 +32,14 @@ python -m afes_venus_jax.examples.t42l60_venus_dry_spinup
 
 ## Notes
 
-- Gaussian grid and spherical-harmonic transforms are implemented by
-  explicit quadrature for clarity and JIT compatibility. Set
-  ``AFES_VENUS_JAX_USE_S2FFT=1`` to switch to the accelerated S2FFT
-  equiangular sampling and optimised transforms used in AFES-style
-  production builds.
-- Enable ``AFES_VENUS_JAX_USE_SEMI_LAGRANGIAN_ADVECTION=1`` to advect
-  winds, temperature, and surface pressure with a first-order
-  semi-Lagrangian step. Use ``AFES_VENUS_JAX_USE_RAW_FILTER=0`` to fall
-  back to the simpler Robert–Asselin filter.
+- By default the code now mirrors AFES-Venus production runs: the
+  accelerated S2FFT equiangular transforms are selected when available,
+  semi-Lagrangian advection is active, and weak divergence damping is
+  applied at truncation. Set ``AFES_VENUS_JAX_USE_S2FFT=0``,
+  ``AFES_VENUS_JAX_USE_SEMI_LAGRANGIAN_ADVECTION=0``, or
+  ``AFES_VENUS_JAX_TAU_DIV_DAMP=""`` to revert to the simpler reference
+  configuration. Use ``AFES_VENUS_JAX_USE_RAW_FILTER=0`` to fall back to
+  the simpler Robert–Asselin filter.
 - Vertical sigma levels follow an exponential mapping from altitude with
   a reference scale height of 15 km.
 - Hyperdiffusion uses a configurable ∇⁴ operator with an e-folding time
