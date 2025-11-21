@@ -95,8 +95,12 @@ class Config:
     tau_sponge_top: float = 0.1 * 86400.0
     sponge_exponent: float = 2.0
     solar_heating_rate: float = 2.0 / 86400.0
-    solar_heating_peak_sigma: float = 0.1
-    solar_heating_width: float = 0.08
+    # Place shortwave heating in the middle–upper cloud deck (≈50–80 km)
+    # following Tomasko et al. (1980). The exponential sigma grid maps
+    # sigma≈0.02 to ~60 km with an e-folding width that spans roughly
+    # 45–80 km.
+    solar_heating_peak_sigma: float = 0.02
+    solar_heating_width: float = 0.02
     solar_diurnal_contrast: float = 1.0
     subsolar_longitude: float = 0.0
 

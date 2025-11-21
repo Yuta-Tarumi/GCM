@@ -30,3 +30,21 @@ Run the unit tests with
 ```bash
 pytest
 ```
+
+## Diurnal forcing notes
+
+* The shortwave heating includes a day–night modulation: `solar_heating` is
+  scaled by `max(0, cos(lat) * cos(lon - subsolar_longitude))`, so the
+  nightside receives zero shortwave input when
+  `solar_diurnal_contrast=1.0`. 【F:afes_venus_jax/tendencies.py†L63-L80】
+* Heating is centered near `sigma≈0.02`, which corresponds to the 50–80 km
+  cloud deck emphasized by Tomasko et al. (1980) when mapped through the
+  exponential sigma grid (`z = -H ln sigma` with `H=15 km`). At the default
+  50-day Newtonian cooling timescale, a 240-step (∼1.7 day) run produces only a
+  few kelvin of zonal contrast, so fields may look horizontally smooth at early
+  times. 【F:afes_venus_jax/config.py†L40-L78】【F:afes_venus_jax/vertical.py†L16-L46】
+* To see a sharper day–night signal quickly, try increasing
+  `--solar-diurnal-contrast` above the default, raising
+  `solar_heating_rate`, or shortening `tau_newtonian`. You can also manually
+  sweep `--subsolar-longitude-deg` between runs to mimic a migrating subsolar
+  point.
