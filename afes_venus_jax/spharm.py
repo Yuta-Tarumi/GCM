@@ -43,12 +43,15 @@ def _precompute_basis(nlat: int, nlon: int, lmax: int):
 
 def _analysis_s2fft(field_grid: jnp.ndarray, lmax: int) -> jnp.ndarray:
     bandlimit = lmax + 1
+    spin = jnp.array(0, dtype=jnp.int32)
+
     def _forward(f):
         return s2fft.forward_jax(
             f,
             bandlimit,
             sampling=cfg.s2fft_sampling,
             reality=jnp.isrealobj(f),
+            spin=spin,
         )
 
     if field_grid.ndim <= 2:
@@ -113,12 +116,15 @@ def _synthesis_s2fft(coeffs: jnp.ndarray, nlat: int, nlon: int):
     full_coeffs = _to_full_m(coeffs)
     reality = jnp.isrealobj(coeffs)
 
+    spin = jnp.array(0, dtype=jnp.int32)
+
     def _inverse(flm):
         return s2fft.inverse_jax(
             flm,
             bandlimit,
             sampling=cfg.s2fft_sampling,
             reality=reality,
+            spin=spin,
         )
 
     if full_coeffs.ndim == 2:

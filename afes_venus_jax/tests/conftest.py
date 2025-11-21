@@ -21,6 +21,10 @@ os.environ.setdefault("AFES_VENUS_JAX_NLAT", "32")
 os.environ.setdefault("AFES_VENUS_JAX_NLON", "64")
 os.environ.setdefault("AFES_VENUS_JAX_L", "10")
 os.environ.setdefault("AFES_VENUS_JAX_FAST_TESTS", "1")
+# Use the quadrature-based spherical transforms in tests to match the analytic
+# expectations for the illustrative initial condition without relying on the
+# optional s2fft dependency.
+os.environ.setdefault("AFES_VENUS_JAX_USE_S2FFT", "0")
 # Use higher precision in tests to avoid underflow in scale-sensitive operators
 # such as hyperdiffusion when the truncation (Lmax) is small.
 os.environ.setdefault("AFES_VENUS_JAX_ENABLE_X64", "True")
