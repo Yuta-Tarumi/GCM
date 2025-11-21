@@ -33,6 +33,8 @@ def _solar_heating_profile(L: int = cfg.L):
 
 
 LAT_GRID, LON_GRID, _ = grid.grid_arrays(cfg.nlat, cfg.nlon)
+LAT_AXIS = LAT_GRID[:, 0]
+COS_LAT = jnp.cos(LAT_AXIS)[:, None]
 
 
 def _diurnal_heating_mask(time_seconds: float, nlat: int = cfg.nlat, nlon: int = cfg.nlon):
@@ -76,15 +78,19 @@ def compute_nonlinear_tendencies(
     T = sph.synthesis_spec_to_grid(mstate.T, nlat, nlon)
     lnps = sph.synthesis_spec_to_grid(mstate.lnps, nlat, nlon)
 
-    # Simple nonlinear advection using flux form; zero metric corrections
+    # Simple nonlinear advection using flux form with basic spherical metrics
     def advect(field, u_field, v_field):
         dlon = 2 * jnp.pi / nlon
-        dlat = (jnp.linspace(-1, 1, nlat)[1] - jnp.linspace(-1, 1, nlat)[0]) * jnp.pi / 2
-        flux_lon = u_field * field
-        flux_lat = v_field * field
-        dfdlon = (jnp.roll(flux_lon, -1, axis=-1) - jnp.roll(flux_lon, 1, axis=-1)) / (2 * dlon)
-        dfdlat = (jnp.roll(flux_lat, -1, axis=-2) - jnp.roll(flux_lat, 1, axis=-2)) / (2 * dlat)
-        return -(dfdlon + dfdlat)
+        cos_lat = COS_LAT if nlat == LAT_AXIS.shape[0] else jnp.cos(grid.gaussian_grid(nlat, nlon)[0])[:, None]
+        cos_safe = jnp.clip(cos_lat, 1e-6, None)
+        lon_flux = u_field * field * cos_lat
+        dfdlon = (jnp.roll(lon_flux, -1, axis=-1) - jnp.roll(lon_flux, 1, axis=-1)) / (2 * dlon)
+
+        lat_axis = LAT_AXIS if nlat == LAT_AXIS.shape[0] else jnp.array(grid.gaussian_grid(nlat, nlon)[0])
+        lat_flux = v_field * field
+        dfdlat = jnp.gradient(lat_flux, lat_axis, axis=-2)
+
+        return -(dfdlon / (cfg.a * cos_safe) + dfdlat / cfg.a)
 
     zeta_tend = jnp.stack([advect(zeta[k], u[k], v[k]) for k in range(zeta.shape[0])])
     div_tend = jnp.stack([advect(div[k], u[k], v[k]) for k in range(div.shape[0])])
