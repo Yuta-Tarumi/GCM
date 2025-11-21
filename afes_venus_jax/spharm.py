@@ -71,9 +71,14 @@ def synthesis_spec_to_grid(coeffs: jnp.ndarray, nlat: int = cfg.nlat, nlon: int 
     """
     lmax = coeffs.shape[-2] - 1
     basis, lats, lons, w = _precompute_basis(nlat, nlon, lmax)
-    def _synth(c):
-        return jnp.real(jnp.sum(c[:, :, None, None] * basis, axis=(0, 1)))
-    return jax.vmap(_synth, in_axes=0)(coeffs) if coeffs.ndim > 2 else _synth(coeffs)
+    # Use a single Einstein summation to support arbitrary leading
+    # dimensions on the coefficient array without relying on manual
+    # broadcasting. This also avoids shape mismatches when the inputs carry
+    # extra batch or vertical axes.
+    if coeffs.ndim == 2:
+        return jnp.real(jnp.einsum("lm,lmij->ij", coeffs, basis))
+
+    return jnp.real(jnp.einsum("...lm,lmij->...ij", coeffs, basis))
 
 
 def lap_spec(flm: jnp.ndarray):
