@@ -7,6 +7,28 @@ import jax.numpy as jnp
 import afes_venus_jax.config as cfg
 import afes_venus_jax.spharm as sph
 import afes_venus_jax.state as state
+import afes_venus_jax.vertical as vertical
+
+
+# Simple radiative forcing parameters
+HEATING_PEAK_K_PER_DAY = 25.0  # peak shortwave heating in the 50–80 km layer
+HEATING_CENTER_M = 65_000.0
+HEATING_WIDTH_M = 8_000.0
+TAU_NEWTONIAN = 20.0 * 86400.0
+T_BOTTOM = 730.0
+T_TOP = 170.0
+
+
+def _reference_temperature_profile(L: int = cfg.L):
+    z_full, _ = vertical.level_altitudes(L)
+    lapse = (T_TOP - T_BOTTOM) / vertical.Z_TOP
+    return T_BOTTOM + lapse * z_full
+
+
+def _solar_heating_profile(L: int = cfg.L):
+    z_full, _ = vertical.level_altitudes(L)
+    peak = HEATING_PEAK_K_PER_DAY / 86400.0
+    return peak * jnp.exp(-((z_full - HEATING_CENTER_M) ** 2) / (2 * HEATING_WIDTH_M**2))
 
 
 def compute_nonlinear_tendencies(mstate: state.ModelState, nlat: int = cfg.nlat, nlon: int = cfg.nlon):
@@ -37,7 +59,14 @@ def compute_nonlinear_tendencies(mstate: state.ModelState, nlat: int = cfg.nlat,
 
     zeta_tend = jnp.stack([advect(zeta[k], u[k], v[k]) for k in range(zeta.shape[0])])
     div_tend = jnp.stack([advect(div[k], u[k], v[k]) for k in range(div.shape[0])])
-    T_tend = jnp.stack([advect(T[k], u[k], v[k]) for k in range(T.shape[0])])
+
+    # Thermodynamics: advection + prescribed heating/cooling
+    T_adv = jnp.stack([advect(T[k], u[k], v[k]) for k in range(T.shape[0])])
+    T_eq = _reference_temperature_profile(T.shape[0])[:, None, None]
+    heating = _solar_heating_profile(T.shape[0])[:, None, None]
+    cooling = -(T - T_eq) / TAU_NEWTONIAN
+    T_tend = T_adv + heating + cooling
+
     lnps_tend = advect(lnps, u[0], v[0])
 
     zeta_spec = sph.analysis_grid_to_spec(zeta_tend)
