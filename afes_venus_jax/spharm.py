@@ -35,8 +35,13 @@ def precompute_basis(cfg: ModelConfig):
     for idx, (l, m) in enumerate(lm_list):
         Y[:, idx] = sph_harm(m, l, phi[None, :], theta[:, None]).reshape(-1)
 
+    # Compute pseudoinverse with normal equations to reduce SVD workspace.
+    # Y_w has shape (nlat * nlon, ncoeff); the Gram matrix is only
+    # (ncoeff, ncoeff), so this path trims peak memory considerably while
+    # keeping the same least-squares solution.
     Y_w = sqrt_w[:, None] * Y
-    pinv = np.linalg.pinv(Y_w, rcond=1e-12)
+    gram = Y_w.conj().T @ Y_w
+    pinv = np.linalg.solve(gram + 1e-12 * np.eye(gram.shape[0]), Y_w.conj().T)
     l_idx = np.array([l for l, _ in lm_list], dtype=np.int32)
     m_idx = np.array([m for _, m in lm_list], dtype=np.int32) + cfg.Lmax
     return (
