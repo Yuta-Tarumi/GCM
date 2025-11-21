@@ -21,3 +21,9 @@ os.environ.setdefault("AFES_VENUS_JAX_NLAT", "32")
 os.environ.setdefault("AFES_VENUS_JAX_NLON", "64")
 os.environ.setdefault("AFES_VENUS_JAX_L", "10")
 os.environ.setdefault("AFES_VENUS_JAX_FAST_TESTS", "1")
+# Use higher precision in tests to avoid underflow in scale-sensitive operators
+# such as hyperdiffusion when the truncation (Lmax) is small.
+os.environ.setdefault("AFES_VENUS_JAX_ENABLE_X64", "True")
+
+# Avoid JIT compilation overhead in the test environment to shorten wall time.
+os.environ.setdefault("JAX_DISABLE_JIT", "1")
