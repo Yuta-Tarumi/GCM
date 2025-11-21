@@ -53,8 +53,8 @@ def nonlinear_tendencies(state, cfg: Config):
     T_tend = advect(T) + heating_tendency(T, cfg, z_full)
     lnps_tend = -jnp.mean(div, axis=0)
 
-    vort_tend = apply_surface_rayleigh(vort_tend, zeta, cfg)
-    div_tend = apply_surface_rayleigh(div_tend, div, cfg)
+    vort_tend = apply_surface_rayleigh(vort_tend, zeta, z_full, cfg)
+    div_tend = apply_surface_rayleigh(div_tend, div, z_full, cfg)
 
     vort_tend, div_tend, T_tend = apply_upper_sponge(
         vort_tend, div_tend, T_tend, zeta, div, T, z_full, cfg
@@ -104,11 +104,18 @@ def vertical_laplacian(field: jnp.ndarray, z_full: jnp.ndarray) -> jnp.ndarray:
     return jnp.gradient(d_dz, dz, axis=0)
 
 
-def apply_surface_rayleigh(tendency: jnp.ndarray, field: jnp.ndarray, cfg: Config) -> jnp.ndarray:
-    """Apply Rayleigh friction to the lowest model level."""
+def apply_surface_rayleigh(
+    tendency: jnp.ndarray, field: jnp.ndarray, z_full: jnp.ndarray, cfg: Config
+) -> jnp.ndarray:
+    """Apply near-surface Rayleigh friction following Lebonnois et al. (2014)."""
 
-    damping = -field[0] / cfg.tau_rayleigh_surface
-    return tendency.at[0].add(damping)
+    ramp = jnp.clip(z_full / cfg.rayleigh_height_top, 0.0, 1.0)
+    tau = cfg.tau_rayleigh_surface + ramp * (cfg.tau_rayleigh_upper - cfg.tau_rayleigh_surface)
+    tau = jnp.where(ramp >= 1.0, jnp.inf, tau)
+    tau_broadcast = tau[:, None, None]
+    damping = -field / tau_broadcast
+    damping = jnp.where(jnp.isfinite(damping), damping, 0.0)
+    return tendency + damping
 
 
 def apply_upper_sponge(
