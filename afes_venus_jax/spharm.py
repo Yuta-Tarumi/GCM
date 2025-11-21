@@ -24,12 +24,12 @@ def _precompute_basis(nlat: int, nlon: int, lmax: int):
     basis = np.zeros((lmax + 1, lmax + 1, nlat, nlon), dtype=np.complex128)
     for ell in range(lmax + 1):
         for m in range(ell + 1):
-            norm = jnp.exp(
+            norm = np.exp(
                 0.5
-                * (jnp.log(2 * ell + 1) - jnp.log(4 * jnp.pi) + gammaln(ell - m + 1) - gammaln(ell + m + 1))
+                * (np.log(2 * ell + 1) - np.log(4 * np.pi) + gammaln(ell - m + 1) - gammaln(ell + m + 1))
             )
             P = lpmv(m, ell, mu)
-            basis[ell, m] = norm * P * jnp.exp(1j * m * lon2d)
+            basis[ell, m] = norm * P * np.exp(1j * m * lon2d)
     return jnp.array(basis), jnp.array(lats), jnp.array(lons), jnp.array(w)
 
 
