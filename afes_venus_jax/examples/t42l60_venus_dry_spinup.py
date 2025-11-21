@@ -117,7 +117,7 @@ def main():
         Lmax=args.lmax or DEFAULT_CFG.Lmax,
         L=args.levels or DEFAULT_CFG.L,
         solar_diurnal_contrast=args.solar_diurnal_contrast,
-        subsolar_longitude=jnp.deg2rad(args.subsolar_longitude_deg),
+        subsolar_longitude=float(jnp.deg2rad(args.subsolar_longitude_deg)),
     )
     state = superrotating_initial_state(cfg)
     snapshot_steps = set(range(0, args.steps + 1, max(1, args.snapshot_every)))
