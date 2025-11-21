@@ -63,14 +63,15 @@ def _diurnal_heating_mask(time_seconds: float, nlat: int = cfg.nlat, nlon: int =
 def compute_nonlinear_tendencies(
     mstate: state.ModelState, time_seconds: float = 0.0, nlat: int = cfg.nlat, nlon: int = cfg.nlon
 ):
-    """Compute Eulerian nonlinear tendencies.
+    """Compute Eulerian nonlinear tendencies for the primitive equations.
 
-    For this first-cut implementation the tendencies are limited to
-    advective forms with simplified metrics to maintain stability while
-    preserving the ζ–D structure. The formulation synthesises the grid
-    winds from the streamfunction and velocity potential before
-    constructing divergence and vorticity tendencies.
+    The formulation prognoses vorticity–divergence, temperature, and log
+    surface pressure with explicit Coriolis and pressure-gradient
+    forcings. Horizontal advection is handled in flux form with basic
+    spherical metrics to maintain stability while capturing the dominant
+    wave–mean-flow interactions.
     """
+
     psi, chi = sph.psi_chi_from_zeta_div(mstate.zeta, mstate.div)
     u, v = sph.uv_from_psi_chi(psi, chi, nlat, nlon)
     zeta = sph.synthesis_spec_to_grid(mstate.zeta, nlat, nlon)
@@ -78,33 +79,79 @@ def compute_nonlinear_tendencies(
     T = sph.synthesis_spec_to_grid(mstate.T, nlat, nlon)
     lnps = sph.synthesis_spec_to_grid(mstate.lnps, nlat, nlon)
 
-    # Simple nonlinear advection using flux form with basic spherical metrics
+    lat_axis = LAT_AXIS if nlat == LAT_AXIS.shape[0] else jnp.array(grid.gaussian_grid(nlat, nlon)[0])
+    cos_lat = COS_LAT if nlat == LAT_AXIS.shape[0] else jnp.cos(lat_axis)[:, None]
+    cos_safe = jnp.clip(cos_lat, 1e-6, None)
+    dlon = 2 * jnp.pi / nlon
+
     def advect(field, u_field, v_field):
-        dlon = 2 * jnp.pi / nlon
-        cos_lat = COS_LAT if nlat == LAT_AXIS.shape[0] else jnp.cos(grid.gaussian_grid(nlat, nlon)[0])[:, None]
-        cos_safe = jnp.clip(cos_lat, 1e-6, None)
         lon_flux = u_field * field * cos_lat
         dfdlon = (jnp.roll(lon_flux, -1, axis=-1) - jnp.roll(lon_flux, 1, axis=-1)) / (2 * dlon)
 
-        lat_axis = LAT_AXIS if nlat == LAT_AXIS.shape[0] else jnp.array(grid.gaussian_grid(nlat, nlon)[0])
         lat_flux = v_field * field
         dfdlat = jnp.gradient(lat_flux, lat_axis, axis=-2)
 
         return -(dfdlon / (cfg.a * cos_safe) + dfdlat / cfg.a)
 
-    zeta_tend = jnp.stack([advect(zeta[k], u[k], v[k]) for k in range(zeta.shape[0])])
-    div_tend = jnp.stack([advect(div[k], u[k], v[k]) for k in range(div.shape[0])])
+    def horizontal_grad(field):
+        dfdlon = (jnp.roll(field, -1, axis=-1) - jnp.roll(field, 1, axis=-1)) / (2 * dlon)
+        dfdlat = jnp.gradient(field, lat_axis, axis=-2)
+        return dfdlon / (cfg.a * cos_safe), dfdlat / cfg.a
 
-    # Thermodynamics: advection + prescribed heating/cooling
-    T_adv = jnp.stack([advect(T[k], u[k], v[k]) for k in range(T.shape[0])])
+    def curl_from_uv(u_field, v_field):
+        dvd_lon = (jnp.roll(v_field, -1, axis=-1) - jnp.roll(v_field, 1, axis=-1)) / (2 * dlon)
+        ucos = u_field * cos_lat
+        ducos_dlat = jnp.gradient(ucos, lat_axis, axis=-2)
+        return (dvd_lon - ducos_dlat) / (cfg.a * cos_safe)
+
+    def div_from_uv(u_field, v_field):
+        dud_lon = (jnp.roll(u_field, -1, axis=-1) - jnp.roll(u_field, 1, axis=-1)) / (2 * dlon)
+        vcos = v_field * cos_lat
+        dvcos_dlat = jnp.gradient(vcos, lat_axis, axis=-2)
+        return (dud_lon + dvcos_dlat) / (cfg.a * cos_safe)
+
+    coriolis = 2.0 * cfg.Omega * jnp.sin(lat_axis)[:, None]
+    _, sigma_half = vertical.sigma_levels(T.shape[0])
+    ps_grid = cfg.ps_ref * jnp.exp(lnps)
+    geopotential = vertical.hydrostatic_geopotential(T, ps_grid, sigma_half)
+    grad_lnps_lon, grad_lnps_lat = horizontal_grad(lnps)
+
+    zeta_tend_levels = []
+    div_tend_levels = []
+    T_adv = []
+
+    for k in range(T.shape[0]):
+        phi = geopotential[k]
+        grad_phi_lon, grad_phi_lat = horizontal_grad(phi)
+
+        u_adv = advect(u[k], u[k], v[k])
+        v_adv = advect(v[k], u[k], v[k])
+
+        pressure_u = grad_phi_lon + cfg.R_gas * T[k] * grad_lnps_lon
+        pressure_v = grad_phi_lat + cfg.R_gas * T[k] * grad_lnps_lat
+
+        u_tend = u_adv + coriolis * v[k] - pressure_u
+        v_tend = v_adv - coriolis * u[k] - pressure_v
+
+        zeta_tend_levels.append(curl_from_uv(u_tend, v_tend))
+        div_tend_levels.append(div_from_uv(u_tend, v_tend))
+        T_adv.append(advect(T[k], u[k], v[k]))
+
+    zeta_tend = jnp.stack(zeta_tend_levels)
+    div_tend = jnp.stack(div_tend_levels)
+    T_adv = jnp.stack(T_adv)
+
+    # Thermodynamics: advection + compressional heating + prescribed heating/cooling
     T_eq = _reference_temperature_profile(T.shape[0])[:, None, None]
     heating_profile = _solar_heating_profile(T.shape[0])[:, None, None]
     diurnal = _diurnal_heating_mask(time_seconds, nlat=nlat, nlon=nlon)[None, :, :]
     heating = heating_profile * diurnal
     cooling = -(T - T_eq) / TAU_NEWTONIAN
-    T_tend = T_adv + heating + cooling
+    kappa = cfg.R_gas / cfg.cp
+    T_tend = T_adv - kappa * T * div + heating + cooling
 
-    lnps_tend = advect(lnps, u[0], v[0])
+    # Surface pressure tendency from mean divergence and advection by lowest-level winds
+    lnps_tend = advect(lnps, u[0], v[0]) - jnp.mean(div, axis=0)
 
     zeta_spec = sph.analysis_grid_to_spec(zeta_tend)
     div_spec = sph.analysis_grid_to_spec(div_tend)
