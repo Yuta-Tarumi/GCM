@@ -14,6 +14,7 @@ import jax.numpy as jnp
 import afes_venus_jax.config as cfg
 import afes_venus_jax.state as state
 import afes_venus_jax.tendencies as tend
+import afes_venus_jax.vertical as vertical
 
 def _gravity_wave_linear_terms(mstate: state.ModelState):
     """Return linearised gravity-wave tendencies for ``div``, ``T``, ``lnps``.
@@ -37,8 +38,10 @@ def _gravity_wave_linear_terms(mstate: state.ModelState):
     kappa = cfg.R_gas / cfg.cp
     T_lin = -kappa * T_ref * mstate.div
 
-    # Surface-pressure tendency from mass continuity (mean divergence).
-    lnps_lin = -jnp.mean(mstate.div, axis=0)
+    # Surface-pressure tendency from mass continuity (mass-weighted divergence).
+    _, sigma_half = vertical.sigma_levels(mstate.div.shape[0])
+    layer_mass = sigma_half[:-1] - sigma_half[1:]
+    lnps_lin = -jnp.sum(mstate.div * layer_mass[:, None, None], axis=0)
     return div_lin, T_lin, lnps_lin
 
 
@@ -58,6 +61,8 @@ def semi_implicit_step(mstate: state.ModelState, tendencies, alpha: float = cfg.
     ell = jnp.arange(lmax + 1)[:, None]
     lap_eigs = ell * (ell + 1) / (cfg.a ** 2)
     T_ref = tend._reference_temperature_profile(mstate.div.shape[0])[:, None, None]
+    _, sigma_half = vertical.sigma_levels(mstate.div.shape[0])
+    layer_mass = sigma_half[:-1] - sigma_half[1:]
     kappa = cfg.R_gas / cfg.cp
 
     # Right-hand sides include explicit nonlinear terms and the explicit
@@ -68,8 +73,8 @@ def semi_implicit_step(mstate: state.ModelState, tendencies, alpha: float = cfg.
     # Solve the coupled (div, lnps) system analytically for each spectral
     # mode: div' = div_rhs - α dt C lnps', lnps' = lnps_rhs - α dt <div'>.
     C = (cfg.R_gas * T_ref) * lap_eigs[None, :, :]
-    mean_C = jnp.mean(C, axis=0)
-    mean_div_rhs = jnp.mean(div_rhs, axis=0)
+    mean_C = jnp.sum(C * layer_mass[:, None, None], axis=0)
+    mean_div_rhs = jnp.sum(div_rhs * layer_mass[:, None, None], axis=0)
     denom = 1.0 - (alpha * dt) ** 2 * mean_C
     lnps_new = (lnps_rhs - alpha * dt * mean_div_rhs) / denom
     div_new = div_rhs - alpha * dt * C * lnps_new[None, :, :]
