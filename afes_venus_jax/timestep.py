@@ -29,8 +29,8 @@ def integrate(initial: state.ModelState, nsteps: int):
             filt_curr, filt_new = _robert_asselin_williams(prev_state, curr_state, raw_new_state)
             return (filt_curr, filt_new), filt_new
         if cfg.time_filter == "asselin":
-            filt_new = _robert_asselin(curr_state, raw_new_state)
-            return (curr_state, filt_new), filt_new
+            filt_curr, filt_new = _robert_asselin(prev_state, curr_state, raw_new_state)
+            return (filt_curr, filt_new), filt_new
 
         # no filtering
         return (curr_state, raw_new_state), raw_new_state
@@ -40,12 +40,27 @@ def integrate(initial: state.ModelState, nsteps: int):
     return carry_out[1], states
 
 
-def _robert_asselin(previous: state.ModelState, new_state: state.ModelState):
-    zeta = (1 - cfg.ra) * new_state.zeta + cfg.ra * previous.zeta
-    div = (1 - cfg.ra) * new_state.div + cfg.ra * previous.div
-    T = (1 - cfg.ra) * new_state.T + cfg.ra * previous.T
-    lnps = (1 - cfg.ra) * new_state.lnps + cfg.ra * previous.lnps
-    return state.ModelState(zeta, div, T, lnps)
+def _robert_asselin(
+    prev_state: state.ModelState, curr_state: state.ModelState, new_state: state.ModelState
+):
+    """Classic Robert–Asselin filter to damp the leapfrog computational mode.
+
+    The filter updates the *current* state using the two-time-level curvature
+    ``prev - 2 * curr + new`` while leaving the newly stepped state unchanged.
+    The filtered current state is passed forward as ``prev`` on the next
+    timestep, providing the intended damping of the ±1 oscillation.
+    """
+
+    eps = cfg.ra
+
+    filt_curr = curr_state.__class__(
+        curr_state.zeta + eps * (prev_state.zeta - 2 * curr_state.zeta + new_state.zeta),
+        curr_state.div + eps * (prev_state.div - 2 * curr_state.div + new_state.div),
+        curr_state.T + eps * (prev_state.T - 2 * curr_state.T + new_state.T),
+        curr_state.lnps + eps * (prev_state.lnps - 2 * curr_state.lnps + new_state.lnps),
+    )
+
+    return filt_curr, new_state
 
 
 def _runtime_sanity_checks(mstate: state.ModelState):

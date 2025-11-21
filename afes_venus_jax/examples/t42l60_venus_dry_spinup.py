@@ -206,7 +206,7 @@ def _diagnostics(mstate: state.ModelState):
     return diag
 
 
-def run_t42l60_venus_spinup(nsteps: int | None = None):
+def run_t42l60_venus_spinup(nsteps: int | None = None, save_snapshots: bool = True):
     """Smoke test for AFES-like T42L60 defaults.
 
     Runs a short integration with conservative time step and AFES-style
@@ -218,7 +218,8 @@ def run_t42l60_venus_spinup(nsteps: int | None = None):
 
     mstate = initial_condition()
     sanity_check_initial_condition(mstate)
-    save_snapshot(mstate, step_idx=0)
+    if save_snapshots:
+        save_snapshot(mstate, step_idx=0)
     if nsteps is None:
         nsteps = int(5 * 86400 / cfg.dt)
 
@@ -231,7 +232,7 @@ def run_t42l60_venus_spinup(nsteps: int | None = None):
                 f"step {step_idx}: |u|={diag['max_u']:.2f} m/s, |v|={diag['max_v']:.2f} m/s, "
                 f"|T'|={diag['max_T_prime']:.2f} K, ps=[{diag['ps_range'][0]:.2e},{diag['ps_range'][1]:.2e}]"
             )
-        if step_idx % int(12 * 3600 / cfg.dt) == 0:
+        if save_snapshots and step_idx % int(12 * 3600 / cfg.dt) == 0:
             save_snapshot(mstate, step_idx=step_idx)
 
     return mstate

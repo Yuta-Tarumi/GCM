@@ -92,7 +92,9 @@ T_eq_profile = t42l60_config.T_EQ_PROFILE
 
 Lmax = _int_env("AFES_VENUS_JAX_LMAX", _default_Lmax)
 s2fft_sampling = os.getenv("AFES_VENUS_JAX_S2FFT_SAMPLING", "mw").lower()
-use_s2fft = os.getenv("AFES_VENUS_JAX_USE_S2FFT", "true").lower() not in {"false", "0", ""}
+# Default to the quadrature-based transforms for numerical robustness unless
+# the accelerated S2FFT backend is explicitly opted into via the environment.
+use_s2fft = os.getenv("AFES_VENUS_JAX_USE_S2FFT", "false").lower() not in {"false", "0", ""}
 
 if use_s2fft and _s2fft_available:
     # S2FFT expects band-limit L such that ell < L.
