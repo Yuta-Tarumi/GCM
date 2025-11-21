@@ -40,17 +40,32 @@ def initial_condition(option: int = 1):
     base = state.zeros_state()
     if option == 1:
         # Solid-body rotation with altitude-dependent amplitude. Build the
-        # streamfunction on the latitude grid so the discrete derivatives used
-        # in ``uv_from_psi_chi`` recover the target winds without spectral
-        # aliasing at reduced truncation.
+        # streamfunction directly on the latitude grid using the same
+        # quadrature spacing that ``uv_from_psi_chi`` differentiates over so we
+        # recover the desired ``u = u_profile * cos(lat)`` structure even on
+        # coarse grids.
         lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
         lat_axis = jnp.array(lats)
-        # Solid-body rotation streamfunction so that u = u_profile * cos(lat).
-        lat_component = lat_axis / 2 + jnp.sin(2 * lat_axis) / 4
         lon_axis = jnp.ones((cfg.nlon,))
         z_full, _ = vertical.level_altitudes()
         u_profile = _zonal_wind_profile(z_full)
-        psi_levels = -cfg.a * u_profile[:, None, None] * lat_component[None, :, None] * lon_axis
+
+        # Integrate psi(lat) such that discrete meridional derivatives match the
+        # target zonal wind on the Gaussian grid. Start integration at the South
+        # Pole to avoid introducing an arbitrary constant and broadcast across
+        # longitude because the flow is axisymmetric.
+        cos_lats = jnp.cos(lat_axis)
+        target_zonal = u_profile[:, None] * cos_lats[None, :]
+        dlat = jnp.diff(lat_axis)
+        # Use cumulative trapezoidal integration for each level.
+        def integrate_streamfunction(u_row):
+            # psi[0] = 0 at the pole.
+            increments = -cfg.a * 0.5 * (u_row[1:] * cos_lats[1:] + u_row[:-1] * cos_lats[:-1]) * dlat
+            psi_lat = jnp.concatenate([jnp.array([0.0]), jnp.cumsum(increments)])
+            return psi_lat
+
+        psi_lat_levels = jax.vmap(integrate_streamfunction)(target_zonal)
+        psi_levels = psi_lat_levels[:, :, None] * lon_axis
         for k in range(cfg.L):
             psi_spec = sph.analysis_grid_to_spec(psi_levels[k])
             zeta_spec = sph.lap_spec(psi_spec)
@@ -58,20 +73,10 @@ def initial_condition(option: int = 1):
             zeta_spec = zeta_spec.at[:, 1:].set(0.0)
             base.zeta = base.zeta.at[k].set(zeta_spec)
 
-        # Rescale each level so that the equatorial zonal-mean wind matches the
-        # target profile after spherical-harmonic transforms and numerical
-        # derivatives used in the diagnostic routines.
-        psi_chk, chi_chk = sph.psi_chi_from_zeta_div(base.zeta, base.div)
-        u_chk, _ = sph.uv_from_psi_chi(psi_chk, chi_chk, cfg.nlat, cfg.nlon)
-        u_mean_lon = jnp.mean(u_chk, axis=-1)
-        cos_lats = jnp.cos(lat_axis)
-        target_zonal = u_profile[:, None] * cos_lats[None, :]
-        numer = jnp.sum(u_mean_lon * target_zonal, axis=-1)
-        denom = jnp.sum(u_mean_lon * u_mean_lon, axis=-1)
-        safe_denom = jnp.where(jnp.abs(denom) < 1e-12, 1e-12, denom)
-        scale = numer / safe_denom
-        scale = jnp.where(jnp.isfinite(scale), scale, 0.0)
-        base.zeta = base.zeta * scale[:, None, None]
+        # The streamfunction construction already matches the desired zonal
+        # winds on the Gaussian grid, so additional rescaling is unnecessary and
+        # can amplify numerical noise when ``denom`` becomes tiny at low
+        # truncation. Leave the vorticity amplitudes unchanged.
     else:
         key = jax.random.PRNGKey(0)
         noise = 1e-6 * (jax.random.normal(key, base.zeta.shape) + 1j * jax.random.normal(key, base.zeta.shape))
