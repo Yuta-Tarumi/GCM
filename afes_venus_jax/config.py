@@ -63,6 +63,11 @@ class Config:
         Sigma level of peak shortwave heating.
     solar_heating_width: float
         Gaussian width of the shortwave heating profile in sigma.
+    solar_diurnal_contrast: float
+        Fractional day-night modulation of shortwave heating (0=uniform,
+        1=zero heating at midnight, scaled by cosine of solar zenith).
+    subsolar_longitude: float
+        Subsolar longitude [rad] where the diurnal heating maximum is centered.
     """
 
     a: float = 6_051_800.0
@@ -92,6 +97,8 @@ class Config:
     solar_heating_rate: float = 2.0 / 86400.0
     solar_heating_peak_sigma: float = 0.1
     solar_heating_width: float = 0.08
+    solar_diurnal_contrast: float = 1.0
+    subsolar_longitude: float = 0.0
 
 
 DEFAULT_CFG = Config()

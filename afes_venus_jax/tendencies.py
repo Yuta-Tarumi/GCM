@@ -61,6 +61,7 @@ def heating_tendency(T: jnp.ndarray, cfg: Config, z_full: jnp.ndarray) -> jnp.nd
     """Thermodynamic tendency from diabatic processes."""
 
     _, sigma_full = sigma_levels(cfg)
+    lats, lons, _ = gaussian_grid(cfg)
     T_eq = reference_temperature_profile(cfg)[:, None, None]
 
     dz = jnp.diff(z_full).mean()
@@ -69,9 +70,13 @@ def heating_tendency(T: jnp.ndarray, cfg: Config, z_full: jnp.ndarray) -> jnp.nd
     d2T_dz2 = jnp.gradient(dT_dz, dz, axis=0)
     vertical_diffusion = cfg.nu_vert * d2T_dz2
 
-    # Prescribed shortwave heating focused near the cloud tops
+    # Prescribed shortwave heating focused near the cloud tops with a simple
+    # diurnal modulation that peaks at the subsolar point and tapers toward
+    # the nightside.
     solar_shape = jnp.exp(-((sigma_full - cfg.solar_heating_peak_sigma) / cfg.solar_heating_width) ** 2)
-    solar_heating = cfg.solar_heating_rate * solar_shape[:, None, None]
+    cos_zenith = jnp.cos(lats)[:, None] * jnp.cos(lons - cfg.subsolar_longitude)[None, :]
+    diurnal_weight = (1.0 - cfg.solar_diurnal_contrast) + cfg.solar_diurnal_contrast * jnp.clip(cos_zenith, 0.0, None)
+    solar_heating = cfg.solar_heating_rate * solar_shape[:, None, None] * diurnal_weight[None, :, :]
 
     # Newtonian cooling toward a reference profile
     newtonian_cooling = -(T - T_eq) / cfg.tau_newtonian
