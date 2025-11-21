@@ -10,20 +10,33 @@ import afes_venus_jax.config as cfg
 import afes_venus_jax.grid as grid
 import afes_venus_jax.spharm as sph
 import afes_venus_jax.state as state
+import afes_venus_jax.tendencies as tend
 import afes_venus_jax.timestep as timestep
 
 
 def initial_condition(option: int = 1):
     base = state.zeros_state()
     if option == 1:
-        # solid-body rotation imprint
-        ell = 1
-        m = 1
-        base.zeta = base.zeta.at[:, ell, m].set(1e-6 + 0j)
+        # Solid-body rotation matching the planetary spin
+        lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
+        lon2d, lat2d = np.meshgrid(np.array(lons), np.array(lats))
+        psi_grid = -cfg.a**2 * cfg.Omega * (lat2d / 2 + np.sin(2 * lat2d) / 4)
+        psi_spec = sph.analysis_grid_to_spec(jnp.array(psi_grid))
+        zeta_spec = sph.lap_spec(psi_spec)
+        for k in range(cfg.L):
+            base.zeta = base.zeta.at[k].set(zeta_spec)
     else:
         key = jax.random.PRNGKey(0)
         noise = 1e-6 * (jax.random.normal(key, base.zeta.shape) + 1j * jax.random.normal(key, base.zeta.shape))
         base.zeta = base.zeta + noise
+
+    # Hydrostatic temperature structure (730 K at the bottom, 170 K at the top)
+    tref = tend._reference_temperature_profile()
+    T_grid = tref[:, None, None] * jnp.ones((cfg.L, cfg.nlat, cfg.nlon))
+    base.T = sph.analysis_grid_to_spec(T_grid)
+
+    # Uniform reference surface pressure
+    base.lnps = base.lnps.at[0, 0].set(0.0)
     return base
 
 
