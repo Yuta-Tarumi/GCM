@@ -64,8 +64,12 @@ def _vertical_laplacian(field: jnp.ndarray, sigma_half: jnp.ndarray):
 
     L = field.shape[0]
     dsigma = sigma_half[1:] - sigma_half[:-1]
+    # Distances between neighbouring full levels use the average of the
+    # surrounding layer thicknesses to avoid shape/broadcasting issues when
+    # differencing ``field[1:] - field[:-1]`` (which has length ``L - 1``).
+    dsigma_full = 0.5 * (dsigma[1:] + dsigma[:-1])
     grad_half = jnp.zeros((L + 1,) + field.shape[1:], dtype=field.dtype)
-    grad_half = grad_half.at[1:-1].set((field[1:] - field[:-1]) / dsigma[:, None, None])
+    grad_half = grad_half.at[1:-1].set((field[1:] - field[:-1]) / dsigma_full[:, None, None])
     lap = jnp.zeros_like(field)
     lap = lap.at[0].set((grad_half[1] - grad_half[0]) / dsigma[0])
     lap = lap.at[1:-1].set((grad_half[2:-1] - grad_half[1:-2]) / dsigma[1:-1, None, None])
