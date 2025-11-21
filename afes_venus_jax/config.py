@@ -44,7 +44,9 @@ nlat = _int_env("AFES_VENUS_JAX_NLAT", _default_nlat)
 nlon = _int_env("AFES_VENUS_JAX_NLON", _default_nlon)
 L = _int_env("AFES_VENUS_JAX_L", _default_L)
 
-jax_enable_x64 = os.getenv("AFES_VENUS_JAX_ENABLE_X64", "True").lower() != "false"
+# Disable 64-bit by default to reduce GPU memory pressure. Users can opt-in
+# via AFES_VENUS_JAX_ENABLE_X64=True when higher precision is required.
+jax_enable_x64 = os.getenv("AFES_VENUS_JAX_ENABLE_X64", "False").lower() != "false"
 
 if jax_enable_x64:
     jax.config.update("jax_enable_x64", True)
