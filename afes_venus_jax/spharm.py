@@ -105,14 +105,23 @@ def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray, nlat: int = cfg.nl
     psi = synthesis_spec_to_grid(psi_lm, nlat, nlon)
     chi = synthesis_spec_to_grid(chi_lm, nlat, nlon)
     lats, lons, w = grid.gaussian_grid(nlat, nlon)
-    lat2d, lon2d = jnp.meshgrid(jnp.array(lats), jnp.array(lons), indexing="ij")
+    lat_axis = jnp.array(lats)
+    lat2d, lon2d = jnp.meshgrid(lat_axis, jnp.array(lons), indexing="ij")
     dlon = 2 * jnp.pi / nlon
     dpsi_dlon = (jnp.roll(psi, -1, axis=-1) - jnp.roll(psi, 1, axis=-1)) / (2 * dlon)
     dchi_dlon = (jnp.roll(chi, -1, axis=-1) - jnp.roll(chi, 1, axis=-1)) / (2 * dlon)
-    dlat = lats[1] - lats[0]
-    dpsi_dlat = (jnp.roll(psi, -1, axis=-2) - jnp.roll(psi, 1, axis=-2)) / (2 * dlat)
-    dchi_dlat = (jnp.roll(chi, -1, axis=-2) - jnp.roll(chi, 1, axis=-2)) / (2 * dlat)
-    cosphi = jnp.cos(jnp.array(lats))[:, None]
-    u = (-dpsi_dlat + dchi_dlon) / (cfg.a * cosphi)
+
+    dpsi_dlat = jnp.gradient(psi, lat_axis, axis=-2)
+    dchi_dlat = jnp.gradient(chi, lat_axis, axis=-2)
+
+    dpsi_dlat = dpsi_dlat.at[0].set(0.0)
+    dpsi_dlat = dpsi_dlat.at[-1].set(0.0)
+    dchi_dlat = dchi_dlat.at[0].set(0.0)
+    dchi_dlat = dchi_dlat.at[-1].set(0.0)
+
+    cosphi = jnp.cos(lat_axis)[:, None]
+    cosphi_safe = jnp.clip(cosphi, 1e-8, None)
+
+    u = (-dpsi_dlat + dchi_dlon) / (cfg.a * cosphi_safe)
     v = (dpsi_dlon + dchi_dlat * 0.0 + dchi_dlat) / cfg.a
     return u, v
