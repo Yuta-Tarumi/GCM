@@ -70,9 +70,10 @@ def sanity_check_initial_condition(mstate: state.ModelState):
     u_mean_lon = lon_mean(u)
 
     expected_profile = np.array(_zonal_wind_profile(vertical.level_altitudes()[0]))
+    expected_zonal = expected_profile[:, None] * cos_lats[None, :]
     equator_idx = int(np.argmin(np.abs(np.array(lats))))
-    if not np.allclose(u_mean_lon[:, equator_idx], expected_profile, atol=1.0, rtol=5e-3):
-        raise ValueError("Zonal-mean equatorial jet does not match expected profile.")
+    if not np.allclose(u_mean_lon, expected_zonal, atol=1.0, rtol=5e-3):
+        raise ValueError("Zonal-mean jet does not match expected cos(latitude) structure.")
 
     mid_level = cfg.L // 2
     scaled_profile = expected_profile[mid_level] * cos_lats
