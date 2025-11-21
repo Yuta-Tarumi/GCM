@@ -50,7 +50,11 @@ class Config:
     nu_vert: float
         Vertical eddy diffusivity/viscosity [m^2 s^-1].
     tau_rayleigh_surface: float
-        Rayleigh friction e-folding time applied at the lowest level [s].
+        Rayleigh friction e-folding time applied at the surface [s].
+    tau_rayleigh_upper: float
+        Rayleigh friction e-folding time at the top of the drag layer [s].
+    rayleigh_height_top: float
+        Height [m] where the near-surface Rayleigh drag is tapered to zero.
     sponge_start_alt: float
         Altitude [m] where the upper-level sponge begins (eddies only).
     tau_sponge_top: float
@@ -89,8 +93,10 @@ class Config:
     tau_hdiff: float = 0.1 * 86400.0
     order_hdiff: int = 2
     tau_newtonian: float = 50.0 * 86400.0
-    nu_vert: float = 0.0015
-    tau_rayleigh_surface: float = 0.5 * 86400.0
+    nu_vert: float = 0.15
+    tau_rayleigh_surface: float = 1.0 * 86400.0
+    tau_rayleigh_upper: float = 5.0 * 86400.0
+    rayleigh_height_top: float = 12e3
     sponge_start_alt: float = 80e3
     tau_sponge_top: float = 0.1 * 86400.0
     sponge_exponent: float = 2.0
