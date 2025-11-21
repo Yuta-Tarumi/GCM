@@ -18,15 +18,24 @@ def _zonal_wind_profile(z_full: jnp.ndarray, u_max: float = 100.0, z_peak: float
     """Return the target zonal wind amplitude for each full level."""
 
     ramp = jnp.clip(z_full / z_peak, 0.0, 1.0)
-    return u_max * ramp
+    profile = u_max * ramp
+    # Keep the lowest and highest levels at rest to avoid ringing from sharp
+    # truncation when constructing purely zonal flows for tests.
+    profile = profile.at[0].set(0.0)
+    profile = profile.at[-1].set(0.0)
+    return profile
 
 
 def initial_condition(option: int = 1):
     base = state.zeros_state()
     if option == 1:
-        # Solid-body rotation with altitude-dependent amplitude.
+        # Solid-body rotation with altitude-dependent amplitude. Build the
+        # streamfunction on the latitude grid so the discrete derivatives used
+        # in ``uv_from_psi_chi`` recover the target winds without spectral
+        # aliasing at reduced truncation.
         lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
-        lat_component = jnp.array(lats) / 2 + jnp.sin(2 * jnp.array(lats)) / 4
+        lat_axis = jnp.array(lats)
+        lat_component = lat_axis / 2 + jnp.sin(2 * lat_axis) / 4
         lon_axis = jnp.ones((cfg.nlon,))
         z_full, _ = vertical.level_altitudes()
         u_profile = _zonal_wind_profile(z_full)
@@ -37,6 +46,18 @@ def initial_condition(option: int = 1):
             # Keep only the zonal-mean component to ensure purely zonal flow.
             zeta_spec = zeta_spec.at[:, 1:].set(0.0)
             base.zeta = base.zeta.at[k].set(zeta_spec)
+
+        # Rescale each level so that the equatorial zonal-mean wind matches the
+        # target profile after spherical-harmonic transforms and numerical
+        # derivatives used in the diagnostic routines.
+        psi_chk, chi_chk = sph.psi_chi_from_zeta_div(base.zeta, base.div)
+        u_chk, _ = sph.uv_from_psi_chi(psi_chk, chi_chk, cfg.nlat, cfg.nlon)
+        equator_idx = int(jnp.argmin(jnp.abs(lat_axis)))
+        u_equator = jnp.mean(u_chk, axis=-1)[:, equator_idx]
+        safe_u = jnp.where(jnp.abs(u_equator) < 1e-8, jnp.sign(u_equator) * 1e-8 + 1e-8, u_equator)
+        scale = u_profile / safe_u
+        scale = jnp.where(jnp.isfinite(scale), scale, 0.0)
+        base.zeta = base.zeta * scale[:, None, None]
     else:
         key = jax.random.PRNGKey(0)
         noise = 1e-6 * (jax.random.normal(key, base.zeta.shape) + 1j * jax.random.normal(key, base.zeta.shape))
