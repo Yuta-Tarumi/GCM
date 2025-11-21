@@ -34,6 +34,8 @@ def initial_condition(option: int = 1):
         for k in range(cfg.L):
             psi_spec = sph.analysis_grid_to_spec(psi_levels[k])
             zeta_spec = sph.lap_spec(psi_spec)
+            # Keep only the zonal-mean component to ensure purely zonal flow.
+            zeta_spec = zeta_spec.at[:, 1:].set(0.0)
             base.zeta = base.zeta.at[k].set(zeta_spec)
     else:
         key = jax.random.PRNGKey(0)
@@ -48,6 +50,46 @@ def initial_condition(option: int = 1):
     # Uniform reference surface pressure
     base.lnps = base.lnps.at[0, 0].set(0.0)
     return base
+
+
+def sanity_check_initial_condition(mstate: state.ModelState):
+    """Confirm the illustrative initial condition matches the expected profiles."""
+
+    psi, chi = sph.psi_chi_from_zeta_div(mstate.zeta, mstate.div)
+    u, v = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
+    T_grid = sph.synthesis_spec_to_grid(mstate.T, cfg.nlat, cfg.nlon)
+    lnps_grid = sph.synthesis_spec_to_grid(mstate.lnps, cfg.nlat, cfg.nlon)
+
+    for field in (u, v, T_grid, lnps_grid):
+        if not np.isfinite(np.array(field)).all():
+            raise ValueError("Initial condition contains non-finite values.")
+
+    lats, _, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
+    cos_lats = np.cos(np.array(lats))
+    lon_mean = lambda arr: np.mean(np.array(arr), axis=-1)
+    u_mean_lon = lon_mean(u)
+
+    expected_profile = np.array(_zonal_wind_profile(vertical.level_altitudes()[0]))
+    equator_idx = int(np.argmin(np.abs(np.array(lats))))
+    if not np.allclose(u_mean_lon[:, equator_idx], expected_profile, atol=1.0, rtol=5e-3):
+        raise ValueError("Zonal-mean equatorial jet does not match expected profile.")
+
+    mid_level = cfg.L // 2
+    scaled_profile = expected_profile[mid_level] * cos_lats
+    midlat_mask = np.abs(np.array(lats)) < np.deg2rad(80.0)
+    if not np.allclose(
+        u_mean_lon[mid_level][midlat_mask], scaled_profile[midlat_mask], atol=2.0, rtol=5e-3
+    ):
+        raise ValueError("Mid-level zonal wind does not follow cos(lat) structure.")
+
+    if np.max(np.abs(v)) >= 5e-6:
+        raise ValueError("Meridional wind should be negligible for the initial state.")
+
+    for level in range(cfg.L):
+        if (np.max(T_grid[level]) - np.min(T_grid[level])) >= 1e-2:
+            raise ValueError("Temperature should be horizontally uniform on each level.")
+    if (np.max(lnps_grid) - np.min(lnps_grid)) >= 1e-12:
+        raise ValueError("Surface pressure should be horizontally uniform.")
 
 
 def plot_initial_snapshot(mstate: state.ModelState, levels: list[int] | None = None, filename: str = "initial_snapshot.png"):
@@ -90,6 +132,7 @@ def plot_initial_snapshot(mstate: state.ModelState, levels: list[int] | None = N
 
 def main():
     mstate = initial_condition()
+    sanity_check_initial_condition(mstate)
     plot_initial_snapshot(mstate)
     nsteps = int(2 * 86400 / cfg.dt)
     for step_idx in range(nsteps):
