@@ -1,11 +1,17 @@
 """T42L60 Venus dry spin-up demo."""
 from __future__ import annotations
 
+import os
+
 import jax
 import jax.numpy as jnp
-
-jax.config.update("jax_enable_x64", True)
 import numpy as np
+
+jax_enable_x64 = os.getenv("AFES_VENUS_JAX_ENABLE_X64", "false").lower() == "true"
+# Keep single precision by default to avoid overwhelming limited GPUs. Opt-in to
+# 64-bit via AFES_VENUS_JAX_ENABLE_X64=true when needed for validation runs.
+if jax_enable_x64:
+    jax.config.update("jax_enable_x64", True)
 
 import afes_venus_jax.config as cfg
 import afes_venus_jax.grid as grid
