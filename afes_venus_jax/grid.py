@@ -19,17 +19,17 @@ def gaussian_grid(cfg: ModelConfig):
 
     Returns
     -------
-    lats : jnp.ndarray
+    lats : np.ndarray
         Latitudes [rad], shape (nlat,).
-    lons : jnp.ndarray
+    lons : np.ndarray
         Longitudes [rad], shape (nlon,).
-    weights : jnp.ndarray
+    weights : np.ndarray
         Gaussian quadrature weights for integration over mu=cos(theta), shape (nlat,).
     """
     mu, w = leggauss(cfg.nlat)
-    lats = jnp.arcsin(mu)
-    lons = jnp.linspace(0.0, 2 * jnp.pi, cfg.nlon, endpoint=False)
-    return lats, lons, jnp.asarray(w)
+    lats = np.arcsin(mu)
+    lons = np.linspace(0.0, 2 * np.pi, cfg.nlon, endpoint=False)
+    return lats, lons, w
 
 
 @functools.lru_cache(None)

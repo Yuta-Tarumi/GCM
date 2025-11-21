@@ -103,6 +103,8 @@ def _lat_deltas(lats: Array) -> Array:
 def uv_from_psi_chi(psi: Array, chi: Array, cfg: ModelConfig, lats: Array | None = None, lons: Array | None = None):
     if lats is None or lons is None:
         lats, lons, _ = gaussian_grid(cfg)
+    lats = jnp.asarray(lats)
+    lons = jnp.asarray(lons)
     psi_g = synthesis_spec_to_grid(psi, cfg)
     chi_g = synthesis_spec_to_grid(chi, cfg)
 
