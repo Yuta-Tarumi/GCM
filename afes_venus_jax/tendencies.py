@@ -161,6 +161,7 @@ def compute_nonlinear_tendencies(
     coriolis = 2.0 * cfg.Omega * jnp.sin(lat_axis)[:, None]
     _, sigma_half = vertical.sigma_levels(T.shape[0])
     z_full, z_half = vertical.level_altitudes(T.shape[0])
+    layer_mass = sigma_half[:-1] - sigma_half[1:]
     ps_grid = cfg.ps_ref * jnp.exp(lnps)
     geopotential = vertical.hydrostatic_geopotential(T, ps_grid, sigma_half)
     grad_lnps_lon, grad_lnps_lat = horizontal_grad(lnps)
@@ -208,8 +209,8 @@ def compute_nonlinear_tendencies(
     cooling = -(T - T_eq) / tau_rad
     T_tend = T_adv - kappa * T * div + cooling + vdiff_T + sponge_T
 
-    # Surface pressure tendency from mean divergence and advection by lowest-level winds
-    lnps_tend = advect(lnps, u[0], v[0]) - jnp.mean(div, axis=0)
+    # Surface pressure tendency from mass-weighted divergence and advection by lowest-level winds
+    lnps_tend = advect(lnps, u[0], v[0]) - jnp.sum(div * layer_mass[:, None, None], axis=0)
 
     zeta_spec = sph.analysis_grid_to_spec(zeta_tend)
     div_spec = sph.analysis_grid_to_spec(div_tend)
