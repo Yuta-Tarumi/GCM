@@ -75,6 +75,7 @@ def save_multiheight_wind_component_fields(
     fig, axes = plt.subplots(
         1, len(level_indices), figsize=(4 * len(level_indices), 4), squeeze=False, constrained_layout=True
     )
+    label = "Zonal wind (m/s)" if component == "u" else "Meridional wind (m/s)"
     meshes = []
     for ax, grid, idx in zip(axes[0], component_grids, level_indices):
         mesh = ax.pcolormesh(
@@ -89,10 +90,9 @@ def save_multiheight_wind_component_fields(
         ax.set_title(f"Level {idx} (~{alt_km:.0f} km)")
         ax.set_xlabel("Longitude (deg)")
         ax.set_ylabel("Latitude (deg)")
+        fig.colorbar(mesh, ax=ax, label=label)
         meshes.append(mesh)
 
-    label = "Zonal wind (m/s)" if component == "u" else "Meridional wind (m/s)"
-    fig.colorbar(meshes[-1], ax=axes.ravel().tolist(), label=label)
     fig.suptitle(f"{label} at step {step}")
     fig.savefig(out_dir / f"{component}_wind_levels_step_{step:03d}.png", dpi=150)
     plt.close(fig)
@@ -122,8 +122,8 @@ def save_multiheight_temperature_fields(
         ax.set_title(f"Level {idx} (~{alt_km:.0f} km)")
         ax.set_xlabel("Longitude (deg)")
         ax.set_ylabel("Latitude (deg)")
+        fig.colorbar(mesh, ax=ax, label="Temperature (K)")
         meshes.append(mesh)
-    fig.colorbar(meshes[-1], ax=axes.ravel().tolist(), label="Temperature (K)")
     fig.suptitle(f"Temperature field at step {step}")
     fig.savefig(out_dir / f"temp_levels_step_{step:03d}.png", dpi=150)
     plt.close(fig)
