@@ -67,6 +67,37 @@ def save_multiheight_wind_fields(state, cfg: Config, step: int, level_indices: I
     plt.close(fig)
 
 
+def save_multiheight_temperature_fields(
+    state, cfg: Config, step: int, level_indices: Iterable[int], z_full, lon2d, lat2d, out_dir: Path
+):
+    level_indices = list(level_indices)
+    if not level_indices:
+        return
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    temperature_grid = jnp.asarray(synthesis_spec_to_grid(state.T, cfg))
+    temps = [temperature_grid[idx] for idx in level_indices]
+    vmin = min(float(temp.min()) for temp in temps)
+    vmax = max(float(temp.max()) for temp in temps)
+
+    fig, axes = plt.subplots(
+        1, len(level_indices), figsize=(4 * len(level_indices), 4), squeeze=False, constrained_layout=True
+    )
+    meshes = []
+    for ax, temp, idx in zip(axes[0], temps, level_indices):
+        mesh = ax.pcolormesh(jnp.asarray(lon2d), jnp.asarray(lat2d), temp, shading="auto", vmin=vmin, vmax=vmax)
+        alt_km = float(z_full[idx] / 1e3)
+        ax.set_title(f"Level {idx} (~{alt_km:.0f} km)")
+        ax.set_xlabel("Longitude (deg)")
+        ax.set_ylabel("Latitude (deg)")
+        meshes.append(mesh)
+    fig.colorbar(meshes[-1], ax=axes.ravel().tolist(), label="Temperature (K)")
+    fig.suptitle(f"Temperature field at step {step}")
+    fig.savefig(out_dir / f"temp_levels_step_{step:03d}.png", dpi=150)
+    plt.close(fig)
+
+
 def levels_from_heights(target_heights_m: Iterable[float], z_full) -> list[int]:
     """Return nearest full-level indices for requested heights in meters."""
 
@@ -82,7 +113,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--steps", type=int, default=int(2 * 86400 / DEFAULT_CFG.dt), help="Number of time steps to run")
     parser.add_argument("--snapshot-every", type=int, default=60, help="Interval (steps) for saving wind plots")
-    parser.add_argument("--output-dir", type=Path, default=Path("wind_plots"), help="Directory for saved wind figures")
+    parser.add_argument("--output-dir", type=Path, default=Path("out_plots"), help="Directory for saved output figures")
     parser.add_argument("--nlat", type=int, default=None, help="Optional Gaussian latitude count override")
     parser.add_argument("--nlon", type=int, default=None, help="Optional longitude count override")
     parser.add_argument("--lmax", type=int, default=None, help="Optional spectral truncation override")
@@ -133,12 +164,14 @@ def main():
 
     save_wind_field(state, cfg, step=0, out_dir=args.output_dir, lon2d=lon2d, lat2d=lat2d)
     save_multiheight_wind_fields(state, cfg, step=0, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
+    save_multiheight_temperature_fields(state, cfg, step=0, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
     for i in range(args.steps):
         state = jit_step(state, cfg)
         step_count = i + 1
         if step_count in snapshot_steps:
             save_wind_field(state, cfg, step=step_count, out_dir=args.output_dir, lon2d=lon2d, lat2d=lat2d)
             save_multiheight_wind_fields(state, cfg, step=step_count, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
+            save_multiheight_temperature_fields(state, cfg, step=step_count, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
         if step_count % 12 == 0:
             zeta_grid = jnp.abs(synthesis_spec_to_grid(state.zeta[0], cfg))
             T_grid = synthesis_spec_to_grid(state.T, cfg)
