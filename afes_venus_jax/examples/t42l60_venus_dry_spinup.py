@@ -177,13 +177,22 @@ def plot_initial_snapshot(mstate: state.ModelState, levels: list[int] | None = N
     plt.close(fig)
 
 
+def save_snapshot(mstate: state.ModelState, step_idx: int, levels: list[int] | None = None):
+    """Save a snapshot for the provided simulation step."""
+
+    filename = f"snapshot_step_{step_idx:05d}.png"
+    plot_initial_snapshot(mstate, levels=levels, filename=filename)
+
+
 def main():
     mstate = initial_condition()
     sanity_check_initial_condition(mstate)
-    plot_initial_snapshot(mstate)
+    save_snapshot(mstate, step_idx=0)
     nsteps = int(2 * 86400 / cfg.dt)
-    for step_idx in range(nsteps):
+    for step_idx in range(1, nsteps + 1):
         mstate = timestep.step(mstate)
+        if step_idx % 100 == 0:
+            save_snapshot(mstate, step_idx=step_idx)
         if step_idx % int(3 * 3600 / cfg.dt) == 0:
             psi, chi = mstate.zeta, mstate.div
             print(f"step {step_idx}: max|zeta|={jnp.max(jnp.abs(psi)).item():.3e}")
