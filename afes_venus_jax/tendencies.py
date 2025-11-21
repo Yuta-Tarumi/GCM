@@ -59,21 +59,25 @@ def _diurnal_heating_mask(time_seconds: float, nlat: int = cfg.nlat, nlon: int =
     return jnp.where(mean_mask > 0.0, daylight / mean_mask, daylight)
 
 
-def _vertical_laplacian(field: jnp.ndarray, sigma_half: jnp.ndarray):
-    """Second derivative in sigma with zero-flux boundaries."""
+def _vertical_laplacian(field: jnp.ndarray, coord_half: jnp.ndarray):
+    """Second derivative along a monotonic vertical coordinate.
+
+    The diffusion coefficient ``KZ`` in :mod:`afes_venus_jax.config` is
+    specified in ``m^2 s^-1``, so the coordinate passed here **must** be in
+    metres. Previously this operator used non-dimensional ``sigma`` levels,
+    which artificially amplified diffusion near the model top (where
+    ``Δsigma`` becomes tiny) and immediately blew up temperature tendencies.
+    """
 
     L = field.shape[0]
-    dsigma = sigma_half[1:] - sigma_half[:-1]
-    # Distances between neighbouring full levels use the average of the
-    # surrounding layer thicknesses to avoid shape/broadcasting issues when
-    # differencing ``field[1:] - field[:-1]`` (which has length ``L - 1``).
-    dsigma_full = 0.5 * (dsigma[1:] + dsigma[:-1])
+    dz = coord_half[1:] - coord_half[:-1]
+    dz_full = 0.5 * (dz[1:] + dz[:-1])
     grad_half = jnp.zeros((L + 1,) + field.shape[1:], dtype=field.dtype)
-    grad_half = grad_half.at[1:-1].set((field[1:] - field[:-1]) / dsigma_full[:, None, None])
+    grad_half = grad_half.at[1:-1].set((field[1:] - field[:-1]) / dz_full[:, None, None])
     lap = jnp.zeros_like(field)
-    lap = lap.at[0].set((grad_half[1] - grad_half[0]) / dsigma[0])
-    lap = lap.at[1:-1].set((grad_half[2:-1] - grad_half[1:-2]) / dsigma[1:-1, None, None])
-    lap = lap.at[-1].set((grad_half[-1] - grad_half[-2]) / dsigma[-1])
+    lap = lap.at[0].set((grad_half[1] - grad_half[0]) / dz[0])
+    lap = lap.at[1:-1].set((grad_half[2:-1] - grad_half[1:-2]) / dz[1:-1, None, None])
+    lap = lap.at[-1].set((grad_half[-1] - grad_half[-2]) / dz[-1])
     return lap
 
 
@@ -156,14 +160,15 @@ def compute_nonlinear_tendencies(
 
     coriolis = 2.0 * cfg.Omega * jnp.sin(lat_axis)[:, None]
     _, sigma_half = vertical.sigma_levels(T.shape[0])
+    z_full, z_half = vertical.level_altitudes(T.shape[0])
     ps_grid = cfg.ps_ref * jnp.exp(lnps)
     geopotential = vertical.hydrostatic_geopotential(T, ps_grid, sigma_half)
     grad_lnps_lon, grad_lnps_lat = horizontal_grad(lnps)
 
     # Vertical diffusion and drag terms (grid space)
-    vdiff_u = cfg.vertical_diffusion_kz * _vertical_laplacian(u, sigma_half)
-    vdiff_v = cfg.vertical_diffusion_kz * _vertical_laplacian(v, sigma_half)
-    vdiff_T = cfg.vertical_diffusion_kz * _vertical_laplacian(T, sigma_half)
+    vdiff_u = cfg.vertical_diffusion_kz * _vertical_laplacian(u, z_half)
+    vdiff_v = cfg.vertical_diffusion_kz * _vertical_laplacian(v, z_half)
+    vdiff_T = cfg.vertical_diffusion_kz * _vertical_laplacian(T, z_half)
     rayleigh_u = _bottom_rayleigh(u, cfg.bottom_rayleigh_tau, cfg.bottom_rayleigh_ramp)
     rayleigh_v = _bottom_rayleigh(v, cfg.bottom_rayleigh_tau, cfg.bottom_rayleigh_ramp)
     sponge = cfg.sponge_config
