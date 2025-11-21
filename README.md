@@ -3,7 +3,8 @@
 A lightweight demonstration of a hydrostatic primitive-equation spectral
 core in JAX using a sigma–Lorenz vertical grid. The package mirrors the
 layout of an AFES-Venus style core with spherical-harmonic transforms,
-semi-implicit stepping, and spectral hyperdiffusion.
+semi-implicit stepping, optional semi-Lagrangian advection, divergence
+damping, Robert–Asselin–Williams filtering, and spectral hyperdiffusion.
 
 ## Installation
 
@@ -32,7 +33,14 @@ python -m afes_venus_jax.examples.t42l60_venus_dry_spinup
 ## Notes
 
 - Gaussian grid and spherical-harmonic transforms are implemented by
-  explicit quadrature for clarity and JIT compatibility.
+  explicit quadrature for clarity and JIT compatibility. Set
+  ``AFES_VENUS_JAX_USE_S2FFT=1`` to switch to the accelerated S2FFT
+  equiangular sampling and optimised transforms used in AFES-style
+  production builds.
+- Enable ``AFES_VENUS_JAX_USE_SEMI_LAGRANGIAN_ADVECTION=1`` to advect
+  winds, temperature, and surface pressure with a first-order
+  semi-Lagrangian step. Use ``AFES_VENUS_JAX_USE_RAW_FILTER=0`` to fall
+  back to the simpler Robert–Asselin filter.
 - Vertical sigma levels follow an exponential mapping from altitude with
   a reference scale height of 15 km.
 - Hyperdiffusion uses a configurable ∇⁴ operator with an e-folding time

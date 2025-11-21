@@ -28,7 +28,7 @@ def test_initial_condition_produces_smooth_rotating_atmosphere():
     for field in (u, v, T_grid, lnps_grid):
         assert np.isfinite(np.array(field)).all()
 
-    lats, _, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
+    lats, _, _ = grid.spectral_grid(cfg.nlat, cfg.nlon)
     cos_lats = np.cos(np.array(lats))
     lon_mean = lambda arr: np.mean(np.array(arr), axis=-1)
     u_mean_lon = lon_mean(u)
