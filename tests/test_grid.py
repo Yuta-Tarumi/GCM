@@ -12,13 +12,13 @@ class GaussianGridTests(unittest.TestCase):
     def test_t42_grid_matches_leggauss(self):
         lats, lons, weights = grid.gaussian_grid()
 
-        mu, w_ref = np.polynomial.legendre.leggauss(cfg._default_nlat)
+        mu, w_ref = np.polynomial.legendre.leggauss(cfg.nlat)
         lats_ref = np.arcsin(mu)
-        lons_ref = np.linspace(0, 2 * np.pi, cfg._default_nlon, endpoint=False)
+        lons_ref = np.linspace(0, 2 * np.pi, cfg.nlon, endpoint=False)
 
-        np.testing.assert_equal(lats.shape, (cfg._default_nlat,))
-        np.testing.assert_equal(lons.shape, (cfg._default_nlon,))
-        np.testing.assert_equal(weights.shape, (cfg._default_nlat,))
+        np.testing.assert_equal(lats.shape, (cfg.nlat,))
+        np.testing.assert_equal(lons.shape, (cfg.nlon,))
+        np.testing.assert_equal(weights.shape, (cfg.nlat,))
 
         np.testing.assert_allclose(lats, lats_ref)
         np.testing.assert_allclose(lons, lons_ref)

@@ -190,7 +190,8 @@ def main():
     save_snapshot(mstate, step_idx=0)
     nsteps = int(2 * 86400 / cfg.dt)
     for step_idx in range(1, nsteps + 1):
-        mstate = timestep.step(mstate)
+        time_seconds = (step_idx - 1) * cfg.dt
+        mstate = timestep.step(mstate, time_seconds=time_seconds)
         if step_idx % 100 == 0:
             save_snapshot(mstate, step_idx=step_idx)
         if step_idx % int(3 * 3600 / cfg.dt) == 0:

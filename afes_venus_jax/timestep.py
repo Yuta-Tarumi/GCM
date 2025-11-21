@@ -12,8 +12,8 @@ import afes_venus_jax.diffusion as diffusion
 
 
 @jax.jit
-def step(mstate: state.ModelState):
-    zeta_t, div_t, T_t, lnps_t = tend.compute_nonlinear_tendencies(mstate)
+def step(mstate: state.ModelState, time_seconds: float = 0.0):
+    zeta_t, div_t, T_t, lnps_t = tend.compute_nonlinear_tendencies(mstate, time_seconds=time_seconds)
     new_state = implicit.semi_implicit_step(mstate, (zeta_t, div_t, T_t, lnps_t))
     new_state = diffusion.apply_diffusion(new_state)
     # Robert–Asselin filter (weak form)
@@ -25,7 +25,9 @@ def step(mstate: state.ModelState):
 
 
 def integrate(initial: state.ModelState, nsteps: int):
-    def _step(carry, _):
-        new_state = step(carry)
+    def _step(carry, step_idx):
+        time_seconds = step_idx * cfg.dt
+        new_state = step(carry, time_seconds=time_seconds)
         return new_state, new_state
-    return jax.lax.scan(_step, initial, None, length=nsteps)
+    step_indices = jnp.arange(nsteps)
+    return jax.lax.scan(_step, initial, step_indices)
