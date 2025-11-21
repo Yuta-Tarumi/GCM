@@ -26,11 +26,13 @@ def _zonal_wind_profile(z_full: jnp.ndarray, u_max: float = 100.0, z_peak: float
     """Return the target zonal wind amplitude for each full level."""
 
     ramp = jnp.clip(z_full / z_peak, 0.0, 1.0)
-    profile = u_max * ramp
-    # Keep the lowest and highest levels at rest to avoid ringing from sharp
+    # Impose a plateau above ``z_peak`` so upper levels share the same
+    # structure as the 70 km level instead of tapering to rest.
+    plateau = jnp.where(z_full >= z_peak, 1.0, ramp)
+    profile = u_max * plateau
+    # Keep only the lowest level at rest to avoid ringing from sharp
     # truncation when constructing purely zonal flows for tests.
     profile = profile.at[0].set(0.0)
-    profile = profile.at[-1].set(0.0)
     return profile
 
 
