@@ -49,5 +49,5 @@ def hydrostatic_geopotential(T: jnp.ndarray, ps: jnp.ndarray, sigma_half: jnp.nd
     # Vectorise over latitude and longitude while keeping the vertical
     # dimension intact.
     integrate_lon = jax.vmap(integrate_column, in_axes=(1, 0), out_axes=1)
-    integrate_lat = jax.vmap(integrate_lon, in_axes=(1, 1), out_axes=1)
+    integrate_lat = jax.vmap(integrate_lon, in_axes=(1, 0), out_axes=1)
     return integrate_lat(T, ps)
