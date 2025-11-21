@@ -11,11 +11,12 @@ import afes_venus_jax.implicit as implicit
 import afes_venus_jax.diffusion as diffusion
 
 
-@jax.jit
 def step(mstate: state.ModelState, time_seconds: float = 0.0):
     zeta_t, div_t, T_t, lnps_t = tend.compute_nonlinear_tendencies(mstate, time_seconds=time_seconds)
     new_state = implicit.semi_implicit_step(mstate, (zeta_t, div_t, T_t, lnps_t))
-    return diffusion.apply_diffusion(new_state)
+    stepped = diffusion.apply_diffusion(new_state)
+    _runtime_sanity_checks(stepped)
+    return stepped
 
 
 def integrate(initial: state.ModelState, nsteps: int):
@@ -24,12 +25,15 @@ def integrate(initial: state.ModelState, nsteps: int):
         time_seconds = step_idx * cfg.dt
         raw_new_state = step(curr_state, time_seconds=time_seconds)
 
-        if cfg.use_raw_filter:
+        if cfg.time_filter == "raw":
             filt_curr, filt_new = _robert_asselin_williams(prev_state, curr_state, raw_new_state)
             return (filt_curr, filt_new), filt_new
+        if cfg.time_filter == "asselin":
+            filt_new = _robert_asselin(curr_state, raw_new_state)
+            return (curr_state, filt_new), filt_new
 
-        filt_new = _robert_asselin(curr_state, raw_new_state)
-        return (curr_state, filt_new), filt_new
+        # no filtering
+        return (curr_state, raw_new_state), raw_new_state
 
     step_indices = jnp.arange(nsteps)
     carry_out, states = jax.lax.scan(_step, (initial, initial), step_indices)
@@ -42,6 +46,24 @@ def _robert_asselin(previous: state.ModelState, new_state: state.ModelState):
     T = (1 - cfg.ra) * new_state.T + cfg.ra * previous.T
     lnps = (1 - cfg.ra) * new_state.lnps + cfg.ra * previous.lnps
     return state.ModelState(zeta, div, T, lnps)
+
+
+def _runtime_sanity_checks(mstate: state.ModelState):
+    """Abort early if temperatures or pressures leave reasonable bounds."""
+
+    import afes_venus_jax.spharm as sph
+
+    T_grid = sph.synthesis_spec_to_grid(mstate.T, cfg.nlat, cfg.nlon)
+    lnps_grid = sph.synthesis_spec_to_grid(mstate.lnps, cfg.nlat, cfg.nlon)
+    ps_grid = cfg.ps_ref * jnp.exp(lnps_grid)
+    max_T = float(jnp.max(T_grid))
+    min_T = float(jnp.min(T_grid))
+    max_ps = float(jnp.max(ps_grid))
+    min_ps = float(jnp.min(ps_grid))
+    if min_T < 100.0 or max_T > 1000.0:
+        raise FloatingPointError(f"Temperature left bounds: min={min_T:.2f}, max={max_T:.2f}")
+    if min_ps < 1e3 or max_ps > 1e7:
+        raise FloatingPointError(f"Surface pressure left bounds: min={min_ps:.2e}, max={max_ps:.2e}")
 
 
 def _robert_asselin_williams(

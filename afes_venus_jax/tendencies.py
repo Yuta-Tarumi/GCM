@@ -11,25 +11,24 @@ import afes_venus_jax.state as state
 import afes_venus_jax.vertical as vertical
 
 
-# Simple radiative forcing parameters
-HEATING_PEAK_K_PER_DAY = 25.0  # peak shortwave heating in the 50–80 km layer
-HEATING_CENTER_M = 65_000.0
-HEATING_WIDTH_M = 8_000.0
-TAU_NEWTONIAN = 20.0 * 86400.0
-T_BOTTOM = 730.0
-T_TOP = 170.0
-
-
+# Reference thermodynamic structure: Venus-like radiative equilibrium
 def _reference_temperature_profile(L: int = cfg.L):
-    z_full, _ = vertical.level_altitudes(L)
-    lapse = (T_TOP - T_BOTTOM) / vertical.Z_TOP
-    return T_BOTTOM + lapse * z_full
+    profile = cfg.T_eq_profile
+    if profile.shape[0] != L:
+        # simple resample if the config was not initialised with this L
+        sigma_full = jnp.linspace(0.5 / L, 1.0 - 0.5 / L, L)
+        base_sigma = jnp.linspace(0.5 / profile.shape[0], 1.0 - 0.5 / profile.shape[0], profile.shape[0])
+        profile = jnp.interp(sigma_full, base_sigma, profile)
+    return profile
 
 
-def _solar_heating_profile(L: int = cfg.L):
-    z_full, _ = vertical.level_altitudes(L)
-    peak = HEATING_PEAK_K_PER_DAY / 86400.0
-    return peak * jnp.exp(-((z_full - HEATING_CENTER_M) ** 2) / (2 * HEATING_WIDTH_M**2))
+def _tau_rad_profile(L: int = cfg.L):
+    profile = cfg.tau_rad_profile
+    if profile.shape[0] != L:
+        sigma_full = jnp.linspace(0.5 / L, 1.0 - 0.5 / L, L)
+        base_sigma = jnp.linspace(0.5 / profile.shape[0], 1.0 - 0.5 / profile.shape[0], profile.shape[0])
+        profile = jnp.interp(sigma_full, base_sigma, profile)
+    return profile
 
 
 LAT_GRID, LON_GRID, _ = grid.grid_arrays(cfg.nlat, cfg.nlon)
@@ -58,6 +57,37 @@ def _diurnal_heating_mask(time_seconds: float, nlat: int = cfg.nlat, nlon: int =
     daylight = jnp.where(cos_zenith > 0.0, cos_zenith, 0.0)
     mean_mask = jnp.mean(daylight)
     return jnp.where(mean_mask > 0.0, daylight / mean_mask, daylight)
+
+
+def _vertical_laplacian(field: jnp.ndarray, sigma_half: jnp.ndarray):
+    """Second derivative in sigma with zero-flux boundaries."""
+
+    L = field.shape[0]
+    dsigma = sigma_half[1:] - sigma_half[:-1]
+    grad_half = jnp.zeros((L + 1,) + field.shape[1:], dtype=field.dtype)
+    grad_half = grad_half.at[1:-1].set((field[1:] - field[:-1]) / dsigma[:, None, None])
+    lap = jnp.zeros_like(field)
+    lap = lap.at[0].set((grad_half[1] - grad_half[0]) / dsigma[0])
+    lap = lap.at[1:-1].set((grad_half[2:-1] - grad_half[1:-2]) / dsigma[1:-1, None, None])
+    lap = lap.at[-1].set((grad_half[-1] - grad_half[-2]) / dsigma[-1])
+    return lap
+
+
+def _bottom_rayleigh(u_field: jnp.ndarray, tau: float, ramp_levels: int):
+    levels = jnp.arange(u_field.shape[0])
+    weights = jnp.where(levels < ramp_levels, (ramp_levels - levels) / ramp_levels, 0.0)
+    return -(weights[:, None, None] / tau) * u_field
+
+
+def _upper_sponge(field: jnp.ndarray, tau_min: float, tau_base: float, top_levels: int):
+    L = field.shape[0]
+    level_idx = jnp.arange(L)
+    start = max(0, L - top_levels)
+    frac = jnp.clip((level_idx - start) / max(top_levels - 1, 1), 0.0, 1.0)
+    tau = tau_base * (tau_min / tau_base) ** frac
+    zonal_mean = jnp.mean(field, axis=-1, keepdims=True)
+    eddy = field - zonal_mean
+    return -(1.0 / tau[:, None, None]) * eddy
 
 
 def compute_nonlinear_tendencies(
@@ -126,6 +156,17 @@ def compute_nonlinear_tendencies(
     geopotential = vertical.hydrostatic_geopotential(T, ps_grid, sigma_half)
     grad_lnps_lon, grad_lnps_lat = horizontal_grad(lnps)
 
+    # Vertical diffusion and drag terms (grid space)
+    vdiff_u = cfg.vertical_diffusion_kz * _vertical_laplacian(u, sigma_half)
+    vdiff_v = cfg.vertical_diffusion_kz * _vertical_laplacian(v, sigma_half)
+    vdiff_T = cfg.vertical_diffusion_kz * _vertical_laplacian(T, sigma_half)
+    rayleigh_u = _bottom_rayleigh(u, cfg.bottom_rayleigh_tau, cfg.bottom_rayleigh_ramp)
+    rayleigh_v = _bottom_rayleigh(v, cfg.bottom_rayleigh_tau, cfg.bottom_rayleigh_ramp)
+    sponge = cfg.sponge_config
+    sponge_u = _upper_sponge(u, sponge.tau_min, sponge.tau_base, sponge.top_levels) if "u" in sponge.apply_to else 0.0
+    sponge_v = _upper_sponge(v, sponge.tau_min, sponge.tau_base, sponge.top_levels) if "v" in sponge.apply_to else 0.0
+    sponge_T = _upper_sponge(T, sponge.tau_min, sponge.tau_base, sponge.top_levels) if "T" in sponge.apply_to else 0.0
+
     zeta_tend_levels = []
     div_tend_levels = []
     T_adv = []
@@ -140,8 +181,8 @@ def compute_nonlinear_tendencies(
         pressure_u = grad_phi_lon + cfg.R_gas * T[k] * grad_lnps_lon
         pressure_v = grad_phi_lat + cfg.R_gas * T[k] * grad_lnps_lat
 
-        u_tend = u_adv + coriolis * v[k] - pressure_u
-        v_tend = v_adv - coriolis * u[k] - pressure_v
+        u_tend = u_adv + coriolis * v[k] - pressure_u + vdiff_u[k] + rayleigh_u[k] + sponge_u[k]
+        v_tend = v_adv - coriolis * u[k] - pressure_v + vdiff_v[k] + rayleigh_v[k] + sponge_v[k]
 
         zeta_tend_levels.append(curl_from_uv(u_tend, v_tend))
         div_tend_levels.append(div_from_uv(u_tend, v_tend))
@@ -151,14 +192,12 @@ def compute_nonlinear_tendencies(
     div_tend = jnp.stack(div_tend_levels)
     T_adv = jnp.stack(T_adv)
 
-    # Thermodynamics: advection + compressional heating + prescribed heating/cooling
+    # Thermodynamics: advection + compressional heating + prescribed Newtonian cooling
     T_eq = _reference_temperature_profile(T.shape[0])[:, None, None]
-    heating_profile = _solar_heating_profile(T.shape[0])[:, None, None]
-    diurnal = _diurnal_heating_mask(time_seconds, nlat=nlat, nlon=nlon)[None, :, :]
-    heating = heating_profile * diurnal
-    cooling = -(T - T_eq) / TAU_NEWTONIAN
+    tau_rad = _tau_rad_profile(T.shape[0])[:, None, None]
     kappa = cfg.R_gas / cfg.cp
-    T_tend = T_adv - kappa * T * div + heating + cooling
+    cooling = -(T - T_eq) / tau_rad
+    T_tend = T_adv - kappa * T * div + cooling + vdiff_T + sponge_T
 
     # Surface pressure tendency from mean divergence and advection by lowest-level winds
     lnps_tend = advect(lnps, u[0], v[0]) - jnp.mean(div, axis=0)

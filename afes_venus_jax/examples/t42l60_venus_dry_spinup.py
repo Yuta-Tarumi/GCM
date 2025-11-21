@@ -185,18 +185,56 @@ def save_snapshot(mstate: state.ModelState, step_idx: int, levels: list[int] | N
 
 
 def main():
+    run_t42l60_venus_spinup()
+
+
+def _diagnostics(mstate: state.ModelState):
+    psi, chi = sph.psi_chi_from_zeta_div(mstate.zeta, mstate.div)
+    u, v = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
+    T_grid = sph.synthesis_spec_to_grid(mstate.T, cfg.nlat, cfg.nlon)
+    lnps_grid = sph.synthesis_spec_to_grid(mstate.lnps, cfg.nlat, cfg.nlon)
+    ps_grid = cfg.ps_ref * jnp.exp(lnps_grid)
+    T_eq = tend._reference_temperature_profile()[:, None, None]
+    diag = {
+        "max_u": float(jnp.max(jnp.abs(u))),
+        "max_v": float(jnp.max(jnp.abs(v))),
+        "max_T_prime": float(jnp.max(jnp.abs(T_grid - T_eq))),
+        "ps_range": (float(jnp.min(ps_grid)), float(jnp.max(ps_grid))),
+        "global_ke": float(jnp.mean(0.5 * (u**2 + v**2))),
+        "mean_T": float(jnp.mean(T_grid)),
+    }
+    return diag
+
+
+def run_t42l60_venus_spinup(nsteps: int | None = None):
+    """Smoke test for AFES-like T42L60 defaults.
+
+    Runs a short integration with conservative time step and AFES-style
+    diffusion/drag/radiation intended to avoid blow-ups while spinning up
+    the super-rotating circulation. This is not a production-quality
+    simulation, but it should remain numerically stable for several
+    Earth days with the packaged defaults.
+    """
+
     mstate = initial_condition()
     sanity_check_initial_condition(mstate)
     save_snapshot(mstate, step_idx=0)
-    nsteps = int(2 * 86400 / cfg.dt)
+    if nsteps is None:
+        nsteps = int(5 * 86400 / cfg.dt)
+
     for step_idx in range(1, nsteps + 1):
         time_seconds = (step_idx - 1) * cfg.dt
         mstate = timestep.step(mstate, time_seconds=time_seconds)
-        if step_idx % 100 == 0:
+        if step_idx % 240 == 0:
+            diag = _diagnostics(mstate)
+            print(
+                f"step {step_idx}: |u|={diag['max_u']:.2f} m/s, |v|={diag['max_v']:.2f} m/s, "
+                f"|T'|={diag['max_T_prime']:.2f} K, ps=[{diag['ps_range'][0]:.2e},{diag['ps_range'][1]:.2e}]"
+            )
+        if step_idx % int(12 * 3600 / cfg.dt) == 0:
             save_snapshot(mstate, step_idx=step_idx)
-        if step_idx % int(3 * 3600 / cfg.dt) == 0:
-            psi, chi = mstate.zeta, mstate.div
-            print(f"step {step_idx}: max|zeta|={jnp.max(jnp.abs(psi)).item():.3e}")
+
+    return mstate
 
 
 if __name__ == "__main__":

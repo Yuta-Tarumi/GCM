@@ -1,7 +1,10 @@
 """Configuration for AFES-Venus-style spectral core.
 
-Defines planetary constants and numerical defaults used across the
-package. Values follow the Venus setup and T42L60 reference grid.
+The module exposes lightweight, module-level parameters that mirror the
+AFES-Venus T42L60 setup. A dedicated :mod:`afes_venus_jax.t42l60_config`
+module holds the full collection of AFES-like numerical tunings; the
+values below simply forward to that preset so the rest of the codebase
+can keep importing ``afes_venus_jax.config`` without refactoring.
 """
 from __future__ import annotations
 
@@ -17,6 +20,8 @@ try:
 except Exception:  # pragma: no cover - optional acceleration dependency
     s2_samples = None
     _s2fft_available = False
+
+from afes_venus_jax import t42l60_config
 
 # Planetary constants (SI units)
 a = 6_051_800.0  # planetary radius [m]
@@ -59,22 +64,30 @@ def _float_env(name: str, default: float, allow_none: bool = False) -> float | N
         return default
 
 
-# Numerical defaults
-_default_Lmax = 42  # spectral truncation (triangular T42)
-_default_nlat = 64
-_default_nlon = 128
-_default_L = 60  # vertical full levels (Lorenz)
-dt = 600.0  # time step [s]
-alpha = 0.5  # SI off-centering
-ra = 0.05  # Robert–Asselin/RAW filter strength
-ra_williams_factor = 0.53  # Williams correction factor for RAW filter
-use_raw_filter = _bool_env("AFES_VENUS_JAX_USE_RAW_FILTER", True)  # enable the higher-order RAW time filter
+# Numerical defaults (T42L60-focused)
+_default_Lmax = t42l60_config.LMAX  # spectral truncation (triangular T42)
+_default_nlat = t42l60_config.NLAT
+_default_nlon = t42l60_config.NLON
+_default_L = t42l60_config.LLEVELS  # vertical full levels (Lorenz)
+dt = t42l60_config.DT  # time step [s]
+alpha = t42l60_config.SI_ALPHA  # SI off-centering
+ra = t42l60_config.RA_COEFF  # Robert–Asselin/RAW filter strength
+ra_williams_factor = t42l60_config.RA_WILLIAMS_FACTOR  # Williams correction factor for RAW filter
+time_filter = os.getenv("AFES_VENUS_JAX_TIME_FILTER", t42l60_config.TIME_FILTER).lower()
+use_raw_filter = time_filter == "raw"
 use_semi_lagrangian_advection = _bool_env("AFES_VENUS_JAX_USE_SEMI_LAGRANGIAN_ADVECTION", True)
 # Apply weak divergence damping by default to mirror AFES-Venus production runs.
-tau_div_damp = _float_env("AFES_VENUS_JAX_TAU_DIV_DAMP", 0.5 * 86400.0, allow_none=True)
+tau_div_damp = _float_env("AFES_VENUS_JAX_TAU_DIV_DAMP", t42l60_config.TAU_DIV_DAMP, allow_none=True)
 order_div_damp = 1  # Laplacian power for divergence damping (1 = ∇², 2 = ∇⁴, ...)
-tau_hdiff = 0.1 * 86400.0  # e-folding time for hyperdiffusion [s]
+tau_hdiff = t42l60_config.TAU_HYPERDIFF  # e-folding time for hyperdiffusion [s]
 order_hdiff = 4
+nu4_hdiff = t42l60_config.NU4_HYPERDIFF
+bottom_rayleigh_tau = t42l60_config.TAU_BOTTOM
+bottom_rayleigh_ramp = t42l60_config.BOTTOM_LAYERS_RAMP
+vertical_diffusion_kz = t42l60_config.KZ
+sponge_config = t42l60_config.SPONGE
+tau_rad_profile = t42l60_config.TAU_RAD_PROFILE
+T_eq_profile = t42l60_config.T_EQ_PROFILE
 
 
 Lmax = _int_env("AFES_VENUS_JAX_LMAX", _default_Lmax)
