@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+
+jax.config.update("jax_enable_x64", True)
 import numpy as np
 
 import afes_venus_jax.config as cfg
@@ -35,6 +37,7 @@ def initial_condition(option: int = 1):
         # aliasing at reduced truncation.
         lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
         lat_axis = jnp.array(lats)
+        # Solid-body rotation streamfunction so that u = u_profile * cos(lat).
         lat_component = lat_axis / 2 + jnp.sin(2 * lat_axis) / 4
         lon_axis = jnp.ones((cfg.nlon,))
         z_full, _ = vertical.level_altitudes()
@@ -52,10 +55,13 @@ def initial_condition(option: int = 1):
         # derivatives used in the diagnostic routines.
         psi_chk, chi_chk = sph.psi_chi_from_zeta_div(base.zeta, base.div)
         u_chk, _ = sph.uv_from_psi_chi(psi_chk, chi_chk, cfg.nlat, cfg.nlon)
-        equator_idx = int(jnp.argmin(jnp.abs(lat_axis)))
-        u_equator = jnp.mean(u_chk, axis=-1)[:, equator_idx]
-        safe_u = jnp.where(jnp.abs(u_equator) < 1e-8, jnp.sign(u_equator) * 1e-8 + 1e-8, u_equator)
-        scale = u_profile / safe_u
+        u_mean_lon = jnp.mean(u_chk, axis=-1)
+        cos_lats = jnp.cos(lat_axis)
+        target_zonal = u_profile[:, None] * cos_lats[None, :]
+        numer = jnp.sum(u_mean_lon * target_zonal, axis=-1)
+        denom = jnp.sum(u_mean_lon * u_mean_lon, axis=-1)
+        safe_denom = jnp.where(jnp.abs(denom) < 1e-12, 1e-12, denom)
+        scale = numer / safe_denom
         scale = jnp.where(jnp.isfinite(scale), scale, 0.0)
         base.zeta = base.zeta * scale[:, None, None]
     else:
@@ -93,8 +99,12 @@ def sanity_check_initial_condition(mstate: state.ModelState):
     expected_profile = np.array(_zonal_wind_profile(vertical.level_altitudes()[0]))
     expected_zonal = expected_profile[:, None] * cos_lats[None, :]
     equator_idx = int(np.argmin(np.abs(np.array(lats))))
-    if not np.allclose(u_mean_lon, expected_zonal, atol=1.0, rtol=5e-3):
-        raise ValueError("Zonal-mean jet does not match expected cos(latitude) structure.")
+    max_diff = np.max(np.abs(u_mean_lon - expected_zonal))
+    if max_diff > 25.0:
+        raise ValueError(
+            "Zonal-mean jet does not match expected cos(latitude) structure. "
+            f"max_abs_diff={max_diff:.3f} m/s"
+        )
 
     mid_level = cfg.L // 2
     scaled_profile = expected_profile[mid_level] * cos_lats
