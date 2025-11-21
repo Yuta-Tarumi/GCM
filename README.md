@@ -11,6 +11,18 @@ semi-implicit stepping, and spectral hyperdiffusion.
 pip install -e .
 ```
 
+To run the test suite on resource-limited machines, set lower-resolution
+defaults via environment variables before invoking pytest:
+
+```bash
+export AFES_VENUS_JAX_LMAX=10
+export AFES_VENUS_JAX_NLAT=32
+export AFES_VENUS_JAX_NLON=64
+export AFES_VENUS_JAX_L=10
+export AFES_VENUS_JAX_FAST_TESTS=1
+pytest
+```
+
 ## Running the T42L60 demo
 
 ```bash
