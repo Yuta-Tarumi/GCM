@@ -33,6 +33,7 @@ def _zonal_wind_profile(z_full: jnp.ndarray, u_max: float = 100.0, z_peak: float
     # Keep only the lowest level at rest to avoid ringing from sharp
     # truncation when constructing purely zonal flows for tests.
     profile = profile.at[0].set(0.0)
+    profile = profile.at[-1].set(0.0)
     return profile
 
 
