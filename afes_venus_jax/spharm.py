@@ -51,7 +51,14 @@ def analysis_grid_to_spec(field_grid: jnp.ndarray, lmax: int = cfg.Lmax):
         integrand = f[None, None, :, :] * jnp.conjugate(basis)
         coeffs = jnp.sum(integrand * weights[None, None, :, :], axis=(-1, -2))
         return coeffs
-    return jax.vmap(_transform, in_axes=0)(field_grid) if field_grid.ndim > 2 else _transform(field_grid)
+
+    if field_grid.ndim <= 2:
+        return _transform(field_grid)
+
+    leading = field_grid.shape[:-2]
+    flat_grid = field_grid.reshape((-1,) + field_grid.shape[-2:])
+    flat_spec = jax.vmap(_transform)(flat_grid)
+    return flat_spec.reshape(leading + (lmax + 1, lmax + 1))
 
 
 def synthesis_spec_to_grid(coeffs: jnp.ndarray, nlat: int = cfg.nlat, nlon: int = cfg.nlon):
@@ -72,14 +79,14 @@ def synthesis_spec_to_grid(coeffs: jnp.ndarray, nlat: int = cfg.nlat, nlon: int 
 def lap_spec(flm: jnp.ndarray):
     ell = jnp.arange(flm.shape[-2])[:, None]
     factor = -ell * (ell + 1) / (cfg.a ** 2)
-    return factor[..., None] * flm
+    return factor * flm
 
 
 def invert_laplacian(flm: jnp.ndarray):
     ell = jnp.arange(flm.shape[-2])[:, None]
     factor = ell * (ell + 1)
     inv = jnp.where(factor > 0, -cfg.a ** 2 / factor, 0.0)
-    return inv[..., None] * flm
+    return inv * flm
 
 
 def psi_chi_from_zeta_div(zeta_lm: jnp.ndarray, div_lm: jnp.ndarray):
