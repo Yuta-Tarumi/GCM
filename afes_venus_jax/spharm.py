@@ -105,11 +105,11 @@ def uv_from_psi_chi(psi_lm: jnp.ndarray, chi_lm: jnp.ndarray, nlat: int = cfg.nl
     psi = synthesis_spec_to_grid(psi_lm, nlat, nlon)
     chi = synthesis_spec_to_grid(chi_lm, nlat, nlon)
     lats, lons, w = grid.gaussian_grid(nlat, nlon)
-    lat2d, lon2d = jnp.meshgrid(jnp.array(lons), jnp.array(lats))
+    lat2d, lon2d = jnp.meshgrid(jnp.array(lats), jnp.array(lons), indexing="ij")
     dlon = 2 * jnp.pi / nlon
     dpsi_dlon = (jnp.roll(psi, -1, axis=-1) - jnp.roll(psi, 1, axis=-1)) / (2 * dlon)
     dchi_dlon = (jnp.roll(chi, -1, axis=-1) - jnp.roll(chi, 1, axis=-1)) / (2 * dlon)
-    dlat = lat2d[1, 0] - lat2d[0, 0]
+    dlat = lats[1] - lats[0]
     dpsi_dlat = (jnp.roll(psi, -1, axis=-2) - jnp.roll(psi, 1, axis=-2)) / (2 * dlat)
     dchi_dlat = (jnp.roll(chi, -1, axis=-2) - jnp.roll(chi, 1, axis=-2)) / (2 * dlat)
     cosphi = jnp.cos(jnp.array(lats))[:, None]
