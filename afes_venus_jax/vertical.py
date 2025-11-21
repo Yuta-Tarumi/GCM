@@ -1,6 +1,7 @@
 """Vertical discretisation utilities for σ–Lorenz levels."""
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -37,10 +38,16 @@ def level_altitudes(L: int = cfg.L):
 def hydrostatic_geopotential(T: jnp.ndarray, ps: jnp.ndarray, sigma_half: jnp.ndarray):
     """Integrate hydrostatic balance to obtain geopotential on full levels."""
     R = cfg.R_gas
+
     def integrate_column(Tcol, p_surf):
         p_half = sigma_half * p_surf
         dp = p_half[:-1] - p_half[1:]
         Tv = Tcol  # dry
         Phi = jnp.cumsum((R * Tv) * dp[::-1] / p_half[:-1][::-1])
         return Phi[::-1]
-    return jnp.vectorize(integrate_column, signature="(k),()->(k)")(T, ps)
+
+    # Vectorise over latitude and longitude while keeping the vertical
+    # dimension intact.
+    integrate_lon = jax.vmap(integrate_column, in_axes=(1, 0), out_axes=1)
+    integrate_lat = jax.vmap(integrate_lon, in_axes=(1, 1), out_axes=1)
+    return integrate_lat(T, ps)
