@@ -79,12 +79,22 @@ def compute_nonlinear_tendencies(
     T = sph.synthesis_spec_to_grid(mstate.T, nlat, nlon)
     lnps = sph.synthesis_spec_to_grid(mstate.lnps, nlat, nlon)
 
-    lat_axis = LAT_AXIS if nlat == LAT_AXIS.shape[0] else jnp.array(grid.gaussian_grid(nlat, nlon)[0])
-    cos_lat = COS_LAT if nlat == LAT_AXIS.shape[0] else jnp.cos(lat_axis)[:, None]
+    if nlat == LAT_AXIS.shape[0] and nlon == LON_GRID.shape[1]:
+        lat_grid = LAT_GRID
+        lon_grid = LON_GRID
+        lat_axis = LAT_AXIS
+        cos_lat = COS_LAT
+    else:
+        lat_grid, lon_grid, _ = grid.grid_arrays(nlat, nlon)
+        lat_axis = jnp.array(grid.spectral_grid(nlat, nlon)[0])
+        cos_lat = jnp.cos(lat_axis)[:, None]
     cos_safe = jnp.clip(cos_lat, 1e-6, None)
     dlon = 2 * jnp.pi / nlon
 
     def advect(field, u_field, v_field):
+        if cfg.use_semi_lagrangian_advection:
+            return _semi_lagrangian_advect(field, u_field, v_field, lat_axis, lat_grid, lon_grid, cos_safe)
+
         lon_flux = u_field * field * cos_lat
         dfdlon = (jnp.roll(lon_flux, -1, axis=-1) - jnp.roll(lon_flux, 1, axis=-1)) / (2 * dlon)
 
@@ -158,3 +168,53 @@ def compute_nonlinear_tendencies(
     T_spec = sph.analysis_grid_to_spec(T_tend)
     lnps_spec = sph.analysis_grid_to_spec(lnps_tend)
     return zeta_spec, div_spec, T_spec, lnps_spec
+
+
+def _semi_lagrangian_advect(
+    field: jnp.ndarray,
+    u_field: jnp.ndarray,
+    v_field: jnp.ndarray,
+    lat_axis: jnp.ndarray,
+    lat_grid: jnp.ndarray,
+    lon_grid: jnp.ndarray,
+    cos_lat: jnp.ndarray,
+):
+    """First-order semi-Lagrangian advection on the regular lat–lon grid.
+
+    Departure points are estimated with a single Euler step and bilinear
+    interpolation. The returned tendency represents ``(field_d - field)/dt``
+    so it can replace the Eulerian flux-form advection in the explicit time
+    update without altering the surrounding forcing terms.
+    """
+
+    cos_safe = jnp.clip(cos_lat, 1e-6, None)
+    lat_depart = jnp.clip(lat_grid - cfg.dt * v_field / cfg.a, -jnp.pi / 2, jnp.pi / 2)
+    lon_depart = lon_grid - cfg.dt * u_field / (cfg.a * cos_safe)
+    lon_depart = jnp.mod(lon_depart, 2 * jnp.pi)
+
+    field_depart = _bilinear_sample(field, lat_depart, lon_depart, lat_axis, lon_grid[0], 2 * jnp.pi / field.shape[-1])
+    return (field_depart - field) / cfg.dt
+
+
+def _bilinear_sample(field, lat_dep, lon_dep, lat_axis, lon0, dlon):
+    """Bilinear interpolation on a latitude–longitude grid."""
+
+    nlat, nlon = field.shape[-2:]
+    lon_idx_float = (lon_dep - lon0) / dlon
+    lon_idx0 = jnp.floor(lon_idx_float).astype(int) % nlon
+    lon_w = lon_idx_float - lon_idx0
+    lon_idx1 = (lon_idx0 + 1) % nlon
+
+    lat_idx1 = jnp.clip(jnp.searchsorted(lat_axis, lat_dep), 1, nlat - 1)
+    lat_idx0 = lat_idx1 - 1
+    lat_w = (lat_dep - lat_axis[lat_idx0]) / jnp.maximum(lat_axis[lat_idx1] - lat_axis[lat_idx0], 1e-12)
+
+    f00 = field[lat_idx0, lon_idx0]
+    f01 = field[lat_idx0, lon_idx1]
+    f10 = field[lat_idx1, lon_idx0]
+    f11 = field[lat_idx1, lon_idx1]
+
+    return (
+        (1 - lat_w) * ((1 - lon_w) * f00 + lon_w * f01)
+        + lat_w * ((1 - lon_w) * f10 + lon_w * f11)
+    )

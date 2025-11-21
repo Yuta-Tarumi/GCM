@@ -45,7 +45,7 @@ def initial_condition(option: int = 1):
         # quadrature spacing that ``uv_from_psi_chi`` differentiates over so we
         # recover the desired ``u = u_profile * cos(lat)`` structure even on
         # coarse grids.
-        lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
+        lats, lons, _ = grid.spectral_grid(cfg.nlat, cfg.nlon)
         lat_axis = jnp.array(lats)
         lon_axis = jnp.ones((cfg.nlon,))
         z_full, _ = vertical.level_altitudes()
@@ -105,7 +105,7 @@ def sanity_check_initial_condition(mstate: state.ModelState):
         if not np.isfinite(np.array(field)).all():
             raise ValueError("Initial condition contains non-finite values.")
 
-    lats, _, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
+    lats, _, _ = grid.spectral_grid(cfg.nlat, cfg.nlon)
     cos_lats = np.cos(np.array(lats))
     lon_mean = lambda arr: np.mean(np.array(arr), axis=-1)
     u_mean_lon = lon_mean(u)
@@ -154,7 +154,7 @@ def plot_initial_snapshot(mstate: state.ModelState, levels: list[int] | None = N
         candidates = [0, cfg.L // 4, cfg.L // 2, (3 * cfg.L) // 4, cfg.L - 1]
         levels = sorted({min(cfg.L - 1, max(0, lev)) for lev in candidates})
 
-    lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
+    lats, lons, _ = grid.spectral_grid(cfg.nlat, cfg.nlon)
     lon2d, lat2d = np.meshgrid(np.rad2deg(np.array(lons)), np.rad2deg(np.array(lats)))
 
     fields = [(u, "u [m/s]"), (v, "v [m/s]"), (T_grid, "T [K]"), (p_grid, "p [Pa]")]

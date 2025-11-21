@@ -33,7 +33,7 @@ def test_laplacian_eigen():
 
 
 def test_uv_from_psi_chi_polar_behavior():
-    lats, lons, _ = grid.gaussian_grid(cfg.nlat, cfg.nlon)
+    lats, lons, _ = grid.spectral_grid(cfg.nlat, cfg.nlon)
     lat2d, _ = jnp.meshgrid(jnp.array(lats), jnp.array(lons), indexing="ij")
 
     u0 = 50.0

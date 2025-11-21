@@ -1,7 +1,8 @@
-"""Gaussian grid construction for spectral transforms.
+"""Spectral grids for spherical-harmonic transforms.
 
-Provides a Gaussian (Gauss–Legendre) latitude grid with uniform longitude
-spacing suitable for pseudo-spectral evaluation at T42 resolution.
+Provides the legacy Gaussian (Gauss–Legendre) grid and a backend-aware
+spectral grid that switches to the S2FFT equiangular sampling when
+``AFES_VENUS_JAX_USE_S2FFT`` is enabled.
 """
 from __future__ import annotations
 
@@ -12,6 +13,13 @@ import jax.numpy as jnp
 from numpy.polynomial.legendre import leggauss
 
 import afes_venus_jax.config as cfg
+
+try:
+    from s2fft.sampling import s2_samples
+
+    _HAS_S2FFT = True
+except Exception:  # pragma: no cover - optional acceleration dependency
+    _HAS_S2FFT = False
 
 
 _DATA_DIR = Path(__file__).parent / "data"
@@ -63,8 +71,35 @@ def gaussian_grid(
     return lats, lons, w
 
 
+def spectral_grid(
+    nlat: int | None = None,
+    nlon: int | None = None,
+    *,
+    lmax: int = cfg.Lmax,
+    cache: bool = False,
+    cache_path: str | Path | None = None,
+):
+    """Return the active spectral grid depending on the configured backend."""
+
+    if cfg.use_s2fft and _HAS_S2FFT:
+        bandlimit = lmax + 1
+        thetas = s2_samples.thetas(L=bandlimit, sampling=cfg.s2fft_sampling)
+        lats = np.pi / 2 - thetas  # convert colatitude to geodetic latitude
+        lons = s2_samples.phis_equiang(L=bandlimit, sampling=cfg.s2fft_sampling)
+        weights = np.ones_like(lats) / lats.size
+        return lats, lons, weights
+
+    # Fall back to the Gaussian quadrature grid used by the reference setup.
+    return gaussian_grid(
+        cfg.nlat if nlat is None else nlat,
+        cfg.nlon if nlon is None else nlon,
+        cache=cache,
+        cache_path=cache_path,
+    )
+
+
 def grid_arrays(nlat: int = cfg.nlat, nlon: int = cfg.nlon):
     """Return broadcast latitude/longitude arrays for grid computations."""
-    lats, lons, w = gaussian_grid(nlat, nlon)
+    lats, lons, w = spectral_grid(nlat, nlon)
     lon2d, lat2d = np.meshgrid(lons, lats)
     return jnp.array(lat2d), jnp.array(lon2d), jnp.array(w)
