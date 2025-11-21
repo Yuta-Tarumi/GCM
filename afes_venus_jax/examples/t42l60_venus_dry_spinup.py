@@ -16,12 +16,17 @@ from afes_venus_jax.grid import gaussian_grid
 from afes_venus_jax.initial_conditions import superrotating_initial_state
 from afes_venus_jax.spharm import psi_chi_from_vort_div, synthesis_spec_to_grid, uv_from_psi_chi
 from afes_venus_jax.timestep import jit_step
-from afes_venus_jax.vertical import vertical_coordinates
+from afes_venus_jax.vertical import sigma_levels, vertical_coordinates
 
 def wind_speed_at_level(state, cfg: Config, level_idx: int):
     psi, chi = psi_chi_from_vort_div(state.zeta[level_idx], state.div[level_idx], cfg)
     u, v = uv_from_psi_chi(psi, chi, cfg)
     return jnp.sqrt(u**2 + v**2)
+
+
+def wind_components_at_level(state, cfg: Config, level_idx: int):
+    psi, chi = psi_chi_from_vort_div(state.zeta[level_idx], state.div[level_idx], cfg)
+    return uv_from_psi_chi(psi, chi, cfg)
 
 
 def save_wind_field(state, cfg: Config, step: int, out_dir: Path, lon2d, lat2d, level_idx: int = 0):
@@ -40,30 +45,56 @@ def save_wind_field(state, cfg: Config, step: int, out_dir: Path, lon2d, lat2d, 
     plt.close(fig)
 
 
-def save_multiheight_wind_fields(state, cfg: Config, step: int, level_indices: Iterable[int], z_full, lon2d, lat2d, out_dir: Path):
+def save_multiheight_wind_component_fields(
+    state,
+    cfg: Config,
+    step: int,
+    level_indices: Iterable[int],
+    z_full,
+    lon2d,
+    lat2d,
+    out_dir: Path,
+    component: str,
+):
     level_indices = list(level_indices)
     if not level_indices:
         return
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    speeds = [wind_speed_at_level(state, cfg, idx) for idx in level_indices]
-    vmax = max(float(s.max()) for s in speeds)
+    if component not in {"u", "v"}:
+        raise ValueError("component must be 'u' or 'v'")
+
+    component_grids = []
+    for idx in level_indices:
+        u, v = wind_components_at_level(state, cfg, idx)
+        component_grids.append(u if component == "u" else v)
+
+    vmax = max(float(jnp.abs(grid).max()) for grid in component_grids)
 
     fig, axes = plt.subplots(
         1, len(level_indices), figsize=(4 * len(level_indices), 4), squeeze=False, constrained_layout=True
     )
     meshes = []
-    for ax, speed, idx in zip(axes[0], speeds, level_indices):
-        mesh = ax.pcolormesh(jnp.asarray(lon2d), jnp.asarray(lat2d), jnp.asarray(speed), shading="auto", vmin=0.0, vmax=vmax)
+    for ax, grid, idx in zip(axes[0], component_grids, level_indices):
+        mesh = ax.pcolormesh(
+            jnp.asarray(lon2d),
+            jnp.asarray(lat2d),
+            jnp.asarray(grid),
+            shading="auto",
+            vmin=-vmax,
+            vmax=vmax,
+        )
         alt_km = float(z_full[idx] / 1e3)
         ax.set_title(f"Level {idx} (~{alt_km:.0f} km)")
         ax.set_xlabel("Longitude (deg)")
         ax.set_ylabel("Latitude (deg)")
         meshes.append(mesh)
-    fig.colorbar(meshes[-1], ax=axes.ravel().tolist(), label="Wind speed (m/s)")
-    fig.suptitle(f"Wind field at step {step}")
-    fig.savefig(out_dir / f"wind_levels_step_{step:03d}.png", dpi=150)
+
+    label = "Zonal wind (m/s)" if component == "u" else "Meridional wind (m/s)"
+    fig.colorbar(meshes[-1], ax=axes.ravel().tolist(), label=label)
+    fig.suptitle(f"{label} at step {step}")
+    fig.savefig(out_dir / f"{component}_wind_levels_step_{step:03d}.png", dpi=150)
     plt.close(fig)
 
 
@@ -95,6 +126,40 @@ def save_multiheight_temperature_fields(
     fig.colorbar(meshes[-1], ax=axes.ravel().tolist(), label="Temperature (K)")
     fig.suptitle(f"Temperature field at step {step}")
     fig.savefig(out_dir / f"temp_levels_step_{step:03d}.png", dpi=150)
+    plt.close(fig)
+
+
+def save_multiheight_pressure_fields(
+    state, cfg: Config, step: int, level_indices: Iterable[int], z_full, lon2d, lat2d, out_dir: Path
+):
+    level_indices = list(level_indices)
+    if not level_indices:
+        return
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    _, sigma_full = sigma_levels(cfg)
+    lnps_grid = jnp.asarray(synthesis_spec_to_grid(state.lnps, cfg))
+    surface_pressure = jnp.exp(lnps_grid)
+    pressure_levels = sigma_full[:, None, None] * surface_pressure
+    pressures = [pressure_levels[idx] for idx in level_indices]
+    vmin = min(float(p.min()) for p in pressures)
+    vmax = max(float(p.max()) for p in pressures)
+
+    fig, axes = plt.subplots(
+        1, len(level_indices), figsize=(4 * len(level_indices), 4), squeeze=False, constrained_layout=True
+    )
+    meshes = []
+    for ax, pressure, idx in zip(axes[0], pressures, level_indices):
+        mesh = ax.pcolormesh(jnp.asarray(lon2d), jnp.asarray(lat2d), pressure, shading="auto", vmin=vmin, vmax=vmax)
+        alt_km = float(z_full[idx] / 1e3)
+        ax.set_title(f"Level {idx} (~{alt_km:.0f} km)")
+        ax.set_xlabel("Longitude (deg)")
+        ax.set_ylabel("Latitude (deg)")
+        meshes.append(mesh)
+    fig.colorbar(meshes[-1], ax=axes.ravel().tolist(), label="Pressure (Pa)")
+    fig.suptitle(f"Pressure field at step {step}")
+    fig.savefig(out_dir / f"pressure_levels_step_{step:03d}.png", dpi=150)
     plt.close(fig)
 
 
@@ -163,15 +228,59 @@ def main():
     level_indices = levels_from_heights([h * 1e3 for h in plot_heights_km], z_full)
 
     save_wind_field(state, cfg, step=0, out_dir=args.output_dir, lon2d=lon2d, lat2d=lat2d)
-    save_multiheight_wind_fields(state, cfg, step=0, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
+    save_multiheight_wind_component_fields(
+        state,
+        cfg,
+        step=0,
+        level_indices=level_indices,
+        z_full=z_full,
+        lon2d=lon2d,
+        lat2d=lat2d,
+        out_dir=args.output_dir,
+        component="u",
+    )
+    save_multiheight_wind_component_fields(
+        state,
+        cfg,
+        step=0,
+        level_indices=level_indices,
+        z_full=z_full,
+        lon2d=lon2d,
+        lat2d=lat2d,
+        out_dir=args.output_dir,
+        component="v",
+    )
     save_multiheight_temperature_fields(state, cfg, step=0, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
+    save_multiheight_pressure_fields(state, cfg, step=0, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
     for i in range(args.steps):
         state = jit_step(state, cfg)
         step_count = i + 1
         if step_count in snapshot_steps:
             save_wind_field(state, cfg, step=step_count, out_dir=args.output_dir, lon2d=lon2d, lat2d=lat2d)
-            save_multiheight_wind_fields(state, cfg, step=step_count, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
+            save_multiheight_wind_component_fields(
+                state,
+                cfg,
+                step=step_count,
+                level_indices=level_indices,
+                z_full=z_full,
+                lon2d=lon2d,
+                lat2d=lat2d,
+                out_dir=args.output_dir,
+                component="u",
+            )
+            save_multiheight_wind_component_fields(
+                state,
+                cfg,
+                step=step_count,
+                level_indices=level_indices,
+                z_full=z_full,
+                lon2d=lon2d,
+                lat2d=lat2d,
+                out_dir=args.output_dir,
+                component="v",
+            )
             save_multiheight_temperature_fields(state, cfg, step=step_count, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
+            save_multiheight_pressure_fields(state, cfg, step=step_count, level_indices=level_indices, z_full=z_full, lon2d=lon2d, lat2d=lat2d, out_dir=args.output_dir)
         if step_count % 12 == 0:
             zeta_grid = jnp.abs(synthesis_spec_to_grid(state.zeta[0], cfg))
             T_grid = synthesis_spec_to_grid(state.T, cfg)
