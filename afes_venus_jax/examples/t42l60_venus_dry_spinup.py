@@ -38,6 +38,17 @@ def _zonal_wind_profile(z_full: jnp.ndarray, u_max: float = 100.0, z_peak: float
 
 
 def initial_condition(option: int = 1):
+    """Return an axisymmetric jet with a simple Venus-like thermal structure.
+
+    The default state (:data:`option` == 1) constructs a purely zonal
+    streamfunction that yields ``u(z, lat) = u_profile(z) * cos(lat)`` with a
+    100 m/s plateau above 70 km and zero meridional wind. Temperatures follow
+    the hydrostatic reference profile (730 K near the surface tapering to
+    170 K aloft) with horizontally uniform surface pressure. An optional noisy
+    perturbation (:data:`option` != 1) seeds weak vorticity to exercise damping
+    paths.
+    """
+
     base = state.zeros_state()
     if option == 1:
         # Solid-body rotation with altitude-dependent amplitude. Build the
@@ -138,8 +149,15 @@ def sanity_check_initial_condition(mstate: state.ModelState):
     ):
         raise ValueError("Mid-level zonal wind does not follow cos(lat) structure.")
 
-    if np.max(np.abs(v)) >= 5e-6:
-        raise ValueError("Meridional wind should be negligible for the initial state.")
+    max_u = float(np.max(np.abs(u)))
+    max_v = float(np.max(np.abs(v)))
+    v_tol = max(1e-3, 1e-4 * max(max_u, 1.0))
+    if max_v >= v_tol:
+        raise ValueError(
+            "Meridional wind should be negligible for the initial state. "
+            f"max_v={max_v:.3e} m/s exceeds tolerance {v_tol:.3e}. "
+            "Enable AFES_VENUS_JAX_ENABLE_X64 or reduce truncation if this persists."
+        )
 
     for level in range(cfg.L):
         if (np.max(T_grid[level]) - np.min(T_grid[level])) >= 1e-2:

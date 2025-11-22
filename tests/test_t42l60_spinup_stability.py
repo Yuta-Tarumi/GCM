@@ -17,7 +17,7 @@ from afes_venus_jax.examples import t42l60_venus_dry_spinup as example
 import afes_venus_jax.timestep as timestep
 
 
-def test_t42l60_venus_dry_spinup_stable_for_5_steps():
+def test_t42l60_venus_dry_spinup_stable_for_10_steps():
     # Arrange
     mstate = example.initial_condition()
     example.sanity_check_initial_condition(mstate)
@@ -26,7 +26,7 @@ def test_t42l60_venus_dry_spinup_stable_for_5_steps():
     # Act: advance a handful of steps. Any temperature blow-up should trigger
     # _runtime_sanity_checks inside ``timestep.step``.
     t = 0.0
-    for _ in range(5):
+    for _ in range(10):
         mstate = timestep.step(mstate, time_seconds=t)
         t += dt
 
