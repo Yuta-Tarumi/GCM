@@ -17,7 +17,12 @@ def hyperdiffusion(flm: jnp.ndarray, lmax: int = cfg.Lmax, tau: float = cfg.tau_
     ell = jnp.arange(flm.shape[-2], dtype=flm.real.dtype)[:, None]
     eig = (ell * (ell + 1) / (cfg.a ** 2)) ** order
     nu = cfg.nu4_hdiff if cfg.nu4_hdiff is not None else _nu4(order, tau, lmax, flm.real.dtype)
-    return flm - cfg.dt * nu * eig * flm
+    # Use an exact exponential update to keep the damping term unconditionally
+    # stable. The previous explicit Euler step ``flm - dt * nu * eig * flm``
+    # could become weakly anti-diffusive if ``dt * nu * eig`` crept above 2
+    # (for example when experimenting with smaller tau or larger dt), which
+    # matches the observed rapid grid-scale blow-up in the T42L60 demo.
+    return flm * jnp.exp(-cfg.dt * nu * eig)
 
 
 def apply_diffusion(mstate):
@@ -41,4 +46,4 @@ def _divergence_damping(div_spec: jnp.ndarray):
     tiny = jnp.finfo(div_spec.real.dtype).tiny
     eig_max = jnp.maximum(eig_max, tiny)
     nu = 1.0 / (cfg.tau_div_damp * eig_max)
-    return div_spec - cfg.dt * nu * eig * div_spec
+    return div_spec * jnp.exp(-cfg.dt * nu * eig)

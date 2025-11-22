@@ -12,5 +12,5 @@ def test_hyperdiffusion_e_fold():
     eig = (ell * (ell + 1) / (cfg.a ** 2)) ** cfg.order_hdiff
     eig_max = (cfg.Lmax * (cfg.Lmax + 1) / (cfg.a ** 2)) ** cfg.order_hdiff
     nu = 1.0 / (cfg.tau_hdiff * eig_max)
-    expected = spec - cfg.dt * nu * eig * spec
+    expected = spec * jnp.exp(-cfg.dt * nu * eig)
     assert jnp.allclose(out, expected)
