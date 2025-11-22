@@ -69,7 +69,7 @@ _default_Lmax = t42l60_config.LMAX  # spectral truncation (triangular T42)
 _default_nlat = t42l60_config.NLAT
 _default_nlon = t42l60_config.NLON
 _default_L = t42l60_config.LLEVELS  # vertical full levels (Lorenz)
-dt = t42l60_config.DT  # time step [s]
+dt = _float_env("AFES_VENUS_JAX_DT", t42l60_config.DT)  # time step [s]
 alpha = t42l60_config.SI_ALPHA  # SI off-centering
 ra = t42l60_config.RA_COEFF  # Robert–Asselin/RAW filter strength
 ra_williams_factor = t42l60_config.RA_WILLIAMS_FACTOR  # Williams correction factor for RAW filter
@@ -79,12 +79,12 @@ use_semi_lagrangian_advection = _bool_env("AFES_VENUS_JAX_USE_SEMI_LAGRANGIAN_AD
 # Apply weak divergence damping by default to mirror AFES-Venus production runs.
 tau_div_damp = _float_env("AFES_VENUS_JAX_TAU_DIV_DAMP", t42l60_config.TAU_DIV_DAMP, allow_none=True)
 order_div_damp = 1  # Laplacian power for divergence damping (1 = ∇², 2 = ∇⁴, ...)
-tau_hdiff = t42l60_config.TAU_HYPERDIFF  # e-folding time for hyperdiffusion [s]
+tau_hdiff = _float_env("AFES_VENUS_JAX_TAU_HDIFF", t42l60_config.TAU_HYPERDIFF)  # e-folding time for hyperdiffusion [s]
 order_hdiff = 4
 nu4_hdiff = t42l60_config.NU4_HYPERDIFF
 bottom_rayleigh_tau = t42l60_config.TAU_BOTTOM
 bottom_rayleigh_ramp = t42l60_config.BOTTOM_LAYERS_RAMP
-vertical_diffusion_kz = t42l60_config.KZ
+vertical_diffusion_kz = _float_env("AFES_VENUS_JAX_KZ", t42l60_config.KZ)
 sponge_config = t42l60_config.SPONGE
 tau_rad_profile = t42l60_config.TAU_RAD_PROFILE
 T_eq_profile = t42l60_config.T_EQ_PROFILE
