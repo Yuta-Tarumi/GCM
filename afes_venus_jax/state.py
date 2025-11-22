@@ -39,5 +39,6 @@ jax.tree_util.register_pytree_node(
 
 def zeros_state(L: int = cfg.L, lmax: int = cfg.Lmax):
     shape = (L, lmax + 1, lmax + 1)
-    z = jnp.zeros(shape, dtype=jnp.complex128)
-    return ModelState(z, z, z, jnp.zeros((lmax + 1, lmax + 1), dtype=jnp.complex128))
+    complex_dtype = jnp.complex128 if jax.config.read("jax_enable_x64") else jnp.complex64
+    z = jnp.zeros(shape, dtype=complex_dtype)
+    return ModelState(z, z, z, jnp.zeros((lmax + 1, lmax + 1), dtype=complex_dtype))

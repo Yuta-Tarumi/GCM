@@ -69,6 +69,14 @@ def _vertical_laplacian(field: jnp.ndarray, coord_half: jnp.ndarray):
     ``Δsigma`` becomes tiny) and immediately blew up temperature tendencies.
     """
 
+    # Guard against accidentally passing a non-dimensional sigma coordinate.
+    # Using sigma directly makes ``Δcoord`` vanishingly small near the model
+    # top, which in turn explodes explicit diffusion tendencies. Translate
+    # sigma to metres when detected so the operator always sees a metric
+    # consistent with ``vertical_diffusion_kz``.
+    if coord_half.max() <= 1.0 and coord_half.min() >= 0.0:
+        coord_half = -vertical.H_REF * jnp.log(jnp.clip(coord_half, 1e-8, None))
+
     L = field.shape[0]
     dz = coord_half[1:] - coord_half[:-1]
     dz_full = 0.5 * (dz[1:] + dz[:-1])
