@@ -249,29 +249,68 @@ def _semi_lagrangian_advect(
     lon_depart = lon_grid - cfg.dt * u_field / (cfg.a * cos_safe)
     lon_depart = jnp.mod(lon_depart, 2 * jnp.pi)
 
-    field_depart = _bilinear_sample(field, lat_depart, lon_depart, lat_axis, lon_grid[0], 2 * jnp.pi / field.shape[-1])
-    return (field_depart - field) / cfg.dt
+    #field_depart = _bilinear_sample(field, lat_depart, lon_depart, lat_axis, lon_grid[0], 2 * jnp.pi / field.shape[-1])
+    nlon = field.shape[-1]
+    field_depart = _bilinear_sample(
+        field,
+        lat_depart,
+        lon_depart,
+        lat_axis,
+        lon0=0.0,
+        dlon=2 * jnp.pi / nlon,
+    )
 
+    return (field_depart - field) / cfg.dt
 
 def _bilinear_sample(field, lat_dep, lon_dep, lat_axis, lon0, dlon):
     """Bilinear interpolation on a latitude–longitude grid."""
 
     nlat, nlon = field.shape[-2:]
-    lon_idx_float = (lon_dep - lon0) / dlon
-    lon_idx0 = jnp.floor(lon_idx_float).astype(int) % nlon
-    lon_w = lon_idx_float - lon_idx0
+
+    # --- Longitudes: keep the fraction in [0,1), wrap the integer part only ---
+    lon_idx_float = (lon_dep - lon0) / dlon          # can be negative or > nlon
+    lon_idx0_float = jnp.floor(lon_idx_float)        # real-valued integer part
+    lon_w = lon_idx_float - lon_idx0_float           # ∈ [0,1)
+    lon_idx0 = lon_idx0_float.astype(jnp.int32) % nlon
     lon_idx1 = (lon_idx0 + 1) % nlon
 
+    # --- Latitudes: same as before ---
     lat_idx1 = jnp.clip(jnp.searchsorted(lat_axis, lat_dep), 1, nlat - 1)
     lat_idx0 = lat_idx1 - 1
-    lat_w = (lat_dep - lat_axis[lat_idx0]) / jnp.maximum(lat_axis[lat_idx1] - lat_axis[lat_idx0], 1e-12)
+    lat_w = (lat_dep - lat_axis[lat_idx0]) / jnp.maximum(
+        lat_axis[lat_idx1] - lat_axis[lat_idx0], 1e-12
+    )
 
     f00 = field[lat_idx0, lon_idx0]
     f01 = field[lat_idx0, lon_idx1]
     f10 = field[lat_idx1, lon_idx0]
     f11 = field[lat_idx1, lon_idx1]
 
+    """
+    # Debug: ranges of weights and sampled field
+    jax.debug.print(
+        "[SL debug] lon_w=[{lwmin}, {lwmax}], lat_w=[{awmin}, {awmax}]",
+        lwmin=jnp.min(lon_w),
+        lwmax=jnp.max(lon_w),
+        awmin=jnp.min(lat_w),
+        awmax=jnp.max(lat_w),
+    )
+
+    jax.debug.print(
+        "[SL debug] field={fmin}..{fmax}, field_depart={fdmin}..{fdmax}",
+        fmin=jnp.min(field),
+        fmax=jnp.max(field),
+        fdmin=jnp.min(
+            (1.0 - lat_w) * ((1.0 - lon_w) * f00 + lon_w * f01)
+            + lat_w * ((1.0 - lon_w) * f10 + lon_w * f11)
+        ),
+        fdmax=jnp.max(
+            (1.0 - lat_w) * ((1.0 - lon_w) * f00 + lon_w * f01)
+            + lat_w * ((1.0 - lon_w) * f10 + lon_w * f11)
+        ),
+    )
+    """
     return (
-        (1 - lat_w) * ((1 - lon_w) * f00 + lon_w * f01)
-        + lat_w * ((1 - lon_w) * f10 + lon_w * f11)
+        (1.0 - lat_w) * ((1.0 - lon_w) * f00 + lon_w * f01)
+        + lat_w * ((1.0 - lon_w) * f10 + lon_w * f11)
     )

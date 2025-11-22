@@ -15,7 +15,8 @@ STRICT_SANITY = os.getenv("AFES_VENUS_JAX_STRICT_SANITY", "1") != "0"
 
 def step(mstate: state.ModelState, time_seconds: float = 0.0):
     zeta_t, div_t, T_t, lnps_t = tend.compute_nonlinear_tendencies(mstate, time_seconds=time_seconds)
-    new_state = implicit.semi_implicit_step(mstate, (zeta_t, div_t, T_t, lnps_t))
+    new_state = implicit.explicit_euler_step(mstate, (zeta_t, div_t, T_t, lnps_t))
+    #new_state = implicit.semi_implicit_step(mstate, (zeta_t, div_t, T_t, lnps_t))
     stepped = diffusion.apply_diffusion(new_state)
     _runtime_sanity_checks(stepped)
     return stepped

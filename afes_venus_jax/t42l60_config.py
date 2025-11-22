@@ -12,7 +12,7 @@ NLON = 128
 LLEVELS = 60
 
 # Time stepping
-DT = 0.001  # [s] conservative for stability in AFES-like setup
+DT = 150  # [s] conservative for stability in AFES-like setup
 SI_ALPHA = 0.5
 TIME_FILTER = "asselin"  # alternatives: "raw"
 RA_COEFF = 0.08  # plain Asselin strength for leapfrog

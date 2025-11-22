@@ -16,6 +16,17 @@ import afes_venus_jax.state as state
 import afes_venus_jax.tendencies as tend
 import afes_venus_jax.vertical as vertical
 
+def explicit_euler_step(mstate: state.ModelState, tendencies, alpha: float = cfg.alpha):
+    zeta_t, div_t, T_t, lnps_t = tendencies
+    dt = cfg.dt
+
+    zeta_new = mstate.zeta + dt * zeta_t
+    div_new  = mstate.div  + dt * div_t
+    T_new    = mstate.T    + dt * T_t
+    lnps_new = mstate.lnps + dt * lnps_t
+
+    return state.ModelState(zeta_new, div_new, T_new, lnps_new)
+
 def _gravity_wave_linear_terms(mstate: state.ModelState):
     """Return linearised gravity-wave tendencies for ``div``, ``T``, ``lnps``.
 
@@ -32,7 +43,7 @@ def _gravity_wave_linear_terms(mstate: state.ModelState):
 
     # Divergence feels surface pressure gradients via geopotential; use a
     # dry hydrostatic approximation with reference temperature.
-    div_lin = -(cfg.R_gas * T_ref) * lap_eigs[None, :, :] * mstate.lnps[None, :, :]
+    div_lin = (cfg.R_gas * T_ref) * lap_eigs[None, :, :] * mstate.lnps[None, :, :]
 
     # Compressional heating linearised about the reference temperature.
     kappa = cfg.R_gas / cfg.cp
@@ -75,9 +86,9 @@ def semi_implicit_step(mstate: state.ModelState, tendencies, alpha: float = cfg.
     C = (cfg.R_gas * T_ref) * lap_eigs[None, :, :]
     mean_C = jnp.sum(C * layer_mass[:, None, None], axis=0)
     mean_div_rhs = jnp.sum(div_rhs * layer_mass[:, None, None], axis=0)
-    denom = 1.0 - (alpha * dt) ** 2 * mean_C
+    denom = 1.0 + (alpha * dt) ** 2 * mean_C
     lnps_new = (lnps_rhs - alpha * dt * mean_div_rhs) / denom
-    div_new = div_rhs - alpha * dt * C * lnps_new[None, :, :]
+    div_new = div_rhs + alpha * dt * C * lnps_new[None, :, :]
 
     # Temperature is forced by compressional heating from the updated
     # divergence but keeps other terms explicit.
