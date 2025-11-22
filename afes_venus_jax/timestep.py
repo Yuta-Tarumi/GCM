@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+import os
 
 import afes_venus_jax.config as cfg
 import afes_venus_jax.state as state
@@ -10,6 +11,7 @@ import afes_venus_jax.tendencies as tend
 import afes_venus_jax.implicit as implicit
 import afes_venus_jax.diffusion as diffusion
 
+STRICT_SANITY = os.getenv("AFES_VENUS_JAX_STRICT_SANITY", "1") != "0"
 
 def step(mstate: state.ModelState, time_seconds: float = 0.0):
     zeta_t, div_t, T_t, lnps_t = tend.compute_nonlinear_tendencies(mstate, time_seconds=time_seconds)
@@ -62,19 +64,53 @@ def _robert_asselin(
 
     return filt_curr, new_state
 
-
 def _runtime_sanity_checks(mstate: state.ModelState):
-    """Abort early if temperatures or pressures leave reasonable bounds."""
-
+    """Abort early if temperatures or pressures leave reasonable bounds,
+    or just log them when AFES_VENUS_JAX_STRICT_SANITY=0.
+    """
     import afes_venus_jax.spharm as sph
 
     T_grid = sph.synthesis_spec_to_grid(mstate.T, cfg.nlat, cfg.nlon)
     lnps_grid = sph.synthesis_spec_to_grid(mstate.lnps, cfg.nlat, cfg.nlon)
     ps_grid = cfg.ps_ref * jnp.exp(lnps_grid)
+
+    # Per‑level mins/maxes – very useful for seeing if only top/bottom blow up
+    T_min_levels = jnp.min(T_grid, axis=(-1, -2))
+    T_max_levels = jnp.max(T_grid, axis=(-1, -2))
+
+    jax.debug.print(
+        "[sanity] T global: {mn} .. {mx}",
+        mn=jnp.min(T_grid),
+        mx=jnp.max(T_grid),
+    )
+    jax.debug.print(
+        "[sanity] T level mins: {mins}",
+        mins=T_min_levels,
+    )
+    jax.debug.print(
+        "[sanity] T level maxs: {maxs}",
+        maxs=T_max_levels,
+    )
+    jax.debug.print(
+        "[sanity] ps global: {mn} .. {mx}",
+        mn=jnp.min(ps_grid),
+        mx=jnp.max(ps_grid),
+    )
+
+    # Original bounds
     max_T = float(jnp.max(T_grid))
     min_T = float(jnp.min(T_grid))
     max_ps = float(jnp.max(ps_grid))
     min_ps = float(jnp.min(ps_grid))
+
+    if not STRICT_SANITY:
+        # Just print warnings, don't abort
+        if min_T < 100.0 or max_T > 1000.0:
+            print(f"[WARN] Temperature bounds exceeded: min={min_T:.2f}, max={max_T:.2f}")
+        if min_ps < 1e3 or max_ps > 1e7:
+            print(f"[WARN] Surface pressure bounds exceeded: min={min_ps:.2e}, max={max_ps:.2e}")
+        return
+
     if min_T < 100.0 or max_T > 1000.0:
         raise FloatingPointError(f"Temperature left bounds: min={min_T:.2f}, max={max_T:.2f}")
     if min_ps < 1e3 or max_ps > 1e7:
