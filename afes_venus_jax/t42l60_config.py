@@ -51,7 +51,10 @@ SPONGE = SpongeConfig(
 
 
 # Newtonian cooling profile (simple Venus-like)
-sigma_full = jnp.linspace(0.5 / LLEVELS, 1.0 - 0.5 / LLEVELS, LLEVELS)
+# NOTE: index 0 is the BOTTOM (σ ≈ 1), index LLEVELS-1 is the TOP (small σ),
+# matching the convention used in `vertical.sigma_levels`.
+sigma_full = jnp.linspace(1.0 - 0.5 / LLEVELS, 0.5 / LLEVELS, LLEVELS)
+
 T_EQ_BOTTOM = 735.0
 T_EQ_TOP = 170.0
 T_EQ_PROFILE = T_EQ_BOTTOM - (T_EQ_BOTTOM - T_EQ_TOP) * (1.0 - sigma_full) ** 0.8
