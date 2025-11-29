@@ -58,8 +58,18 @@ def balanced_random_initial_condition(seed: int = 0, wind_std: float = 5.0):
         std = jnp.std(field)
         return jnp.where(std > 0.0, field * (target / std), 0.0)
 
+
     target_u = 1.3 * wind_std
     target_v = 2.5 * wind_std
+    # Iteratively rescale to mitigate numerical losses introduced by round-tripping
+    # through spectral transforms. Use the final iteration's rescaled winds to
+    # rebuild zeta/div so that both u and v land close to ``wind_std``.
+    for _ in range(3):
+        u_target = _rescale(u_balanced)
+        v_target = _rescale(v_balanced)
+        zeta_rescaled, div_rescaled = _vorticity_divergence(u_target, v_target)
+        zeta_spec = sph.analysis_grid_to_spec(zeta_rescaled)
+        div_spec = sph.analysis_grid_to_spec(div_rescaled)
 
     for _ in range(5):
         u_balanced = _rescale(_remove_zonal_mean(u_balanced), target_u)
@@ -100,9 +110,17 @@ def balanced_random_initial_condition(seed: int = 0, wind_std: float = 5.0):
     final_zeta, final_div = _vorticity_divergence(u_out, v_out)
     zeta_spec = sph.analysis_grid_to_spec(final_zeta)
     div_spec = sph.analysis_grid_to_spec(final_div)
+    
+    # Final rescale: directly scale the rotational (zeta) and divergent (div)
+    # spectra so the synthesized u/v fields meet ``wind_std`` independently.
+    psi, chi = sph.psi_chi_from_zeta_div(zeta_spec, div_spec)
+    u_balanced, v_balanced = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
 
-    base.zeta = zeta_spec
-    base.div = div_spec
+    zeta_scale = jnp.where(jnp.std(u_balanced) > 0.0, wind_std / jnp.std(u_balanced), 0.0)
+    div_scale = jnp.where(jnp.std(v_balanced) > 0.0, wind_std / jnp.std(v_balanced), 0.0)
+
+    base.zeta = zeta_spec * zeta_scale
+    base.div = div_spec * div_scale
     return base
 
 
