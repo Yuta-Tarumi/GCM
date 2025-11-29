@@ -49,6 +49,15 @@ def test_initial_condition_produces_smooth_rotating_atmosphere():
         u_mean_lon[mid_level][midlat_mask], scaled_profile[midlat_mask], atol=2.0, rtol=5e-3
     )
 
+    # The flow should be effectively axisymmetric; longitudinal structure
+    # indicates numerical noise or an unintended perturbation in the base
+    # state. Allow a tiny tolerance relative to the jet maximum to avoid
+    # flakiness on extremely coarse grids.
+    u_anom = u - u_mean_lon[..., None]
+    max_u = np.max(np.abs(u_mean_lon))
+    max_allowed_anom = max(1e-2, 1e-3 * max_u)
+    assert np.max(np.abs(u_anom)) < max_allowed_anom
+
     # Divergence-free flow keeps meridional winds negligible
     assert np.max(np.abs(v)) < 5e-6
 
