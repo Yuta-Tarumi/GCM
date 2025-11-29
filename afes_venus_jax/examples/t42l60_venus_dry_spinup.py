@@ -81,9 +81,11 @@ def initial_condition(option: int = 1):
         psi_levels = psi_lat_levels[:, :, None] * lon_axis
         for k in range(cfg.L):
             psi_spec = sph.analysis_grid_to_spec(psi_levels[k])
+            # Remove any spurious non-zonal components introduced by numerical
+            # noise before converting to vorticity so the synthesized flow stays
+            # longitudinally uniform on the grid.
+            psi_spec = psi_spec.at[:, 1:].set(0.0)
             zeta_spec = sph.lap_spec(psi_spec)
-            # Keep only the zonal-mean component to ensure purely zonal flow.
-            zeta_spec = zeta_spec.at[:, 1:].set(0.0)
             base.zeta = base.zeta.at[k].set(zeta_spec)
 
         # The streamfunction construction already matches the desired zonal
