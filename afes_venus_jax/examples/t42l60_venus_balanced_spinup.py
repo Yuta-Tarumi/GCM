@@ -74,11 +74,16 @@ def balanced_random_initial_condition(seed: int = 0, wind_std: float = 5.0):
         psi, chi = sph.psi_chi_from_zeta_div(zeta_spec, div_spec)
         u_balanced, v_balanced = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
 
-    avg_std = 0.5 * (jnp.std(u_balanced) + jnp.std(v_balanced))
-    overall_scale = jnp.where(avg_std > 0.0, wind_std / avg_std, 0.0)
+    # Final rescale: directly scale the rotational (zeta) and divergent (div)
+    # spectra so the synthesized u/v fields meet ``wind_std`` independently.
+    psi, chi = sph.psi_chi_from_zeta_div(zeta_spec, div_spec)
+    u_balanced, v_balanced = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
 
-    base.zeta = zeta_spec * overall_scale
-    base.div = div_spec * overall_scale
+    zeta_scale = jnp.where(jnp.std(u_balanced) > 0.0, wind_std / jnp.std(u_balanced), 0.0)
+    div_scale = jnp.where(jnp.std(v_balanced) > 0.0, wind_std / jnp.std(v_balanced), 0.0)
+
+    base.zeta = zeta_spec * zeta_scale
+    base.div = div_spec * div_scale
     return base
 
 
