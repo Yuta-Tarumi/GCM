@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from typing import Callable
 
 import jax
 import jax.numpy as jnp
@@ -234,7 +235,12 @@ def _diagnostics(mstate: state.ModelState):
     return diag
 
 
-def run_t42l60_venus_spinup(nsteps: int | None = None, save_snapshots: bool = True):
+def run_t42l60_venus_spinup(
+    nsteps: int | None = None,
+    save_snapshots: bool = True,
+    initial_condition_fn: Callable[[], state.ModelState] = initial_condition,
+    sanity_check_fn: Callable[[state.ModelState], None] | None = sanity_check_initial_condition,
+):
     """Smoke test for AFES-like T42L60 defaults.
 
     Runs a short integration with conservative time step and AFES-style
@@ -260,8 +266,9 @@ def run_t42l60_venus_spinup(nsteps: int | None = None, save_snapshots: bool = Tr
     if save_env is not None:
         save_snapshots = save_env.lower() not in {"false", "0", ""}
 
-    mstate = initial_condition()
-    sanity_check_initial_condition(mstate)
+    mstate = initial_condition_fn()
+    if sanity_check_fn is not None:
+        sanity_check_fn(mstate)
     if save_snapshots:
         save_snapshot(mstate, step_idx=0)
     if nsteps is None:
