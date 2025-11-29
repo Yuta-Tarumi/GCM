@@ -24,3 +24,20 @@ def test_balanced_spinup_initial_condition_has_target_wind_std():
     # Act & Assert
     balanced_example.sanity_check_balanced_state(mstate, target_std=5.0)
 
+
+def test_balanced_spinup_initial_condition_has_small_zonal_mean():
+    """Random winds should not contain strong zonal-mean bands."""
+
+    mstate = balanced_example.balanced_random_initial_condition(seed=0, wind_std=5.0)
+
+    psi, chi = balanced_example.sph.psi_chi_from_zeta_div(mstate.zeta, mstate.div)
+    u, v = balanced_example.sph.uv_from_psi_chi(
+        psi, chi, balanced_example.cfg.nlat, balanced_example.cfg.nlon
+    )
+
+    u_zonal_mean = u.mean(axis=-1)
+    v_zonal_mean = v.mean(axis=-1)
+
+    assert (abs(u_zonal_mean) < 0.5).all()
+    assert (abs(v_zonal_mean) < 0.5).all()
+
