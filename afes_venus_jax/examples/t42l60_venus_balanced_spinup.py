@@ -56,13 +56,28 @@ def balanced_random_initial_condition(seed: int = 0, wind_std: float = 5.0):
 
     psi, chi = sph.psi_chi_from_zeta_div(zeta_spec, div_spec)
     u_balanced, v_balanced = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
-    std_u = jnp.std(u_balanced)
-    std_v = jnp.std(v_balanced)
-    avg_std = 0.5 * (std_u + std_v)
-    scale = jnp.where(avg_std > 0.0, wind_std / avg_std, 0.0)
 
-    base.zeta = zeta_spec * scale
-    base.div = div_spec * scale
+    def _rescale(field: jnp.ndarray):
+        std = jnp.std(field)
+        return jnp.where(std > 0.0, field * (wind_std / std), 0.0)
+
+    # Iteratively rescale to mitigate numerical losses introduced by round-tripping
+    # through spectral transforms.
+    for _ in range(2):
+        u_target = _rescale(u_balanced)
+        v_target = _rescale(v_balanced)
+        zeta_rescaled, div_rescaled = _vorticity_divergence(u_target, v_target)
+        zeta_spec = sph.analysis_grid_to_spec(zeta_rescaled)
+        div_spec = sph.analysis_grid_to_spec(div_rescaled)
+
+        psi, chi = sph.psi_chi_from_zeta_div(zeta_spec, div_spec)
+        u_balanced, v_balanced = sph.uv_from_psi_chi(psi, chi, cfg.nlat, cfg.nlon)
+
+    avg_std = 0.5 * (jnp.std(u_balanced) + jnp.std(v_balanced))
+    overall_scale = jnp.where(avg_std > 0.0, wind_std / avg_std, 0.0)
+
+    base.zeta = zeta_spec * overall_scale
+    base.div = div_spec * overall_scale
     return base
 
 
