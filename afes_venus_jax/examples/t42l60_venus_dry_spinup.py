@@ -255,6 +255,8 @@ def run_t42l60_venus_spinup(
     - ``AFES_VENUS_JAX_SPINUP_STEPS``: override ``nsteps`` for quick smoke runs.
     - ``AFES_VENUS_JAX_SAVE_SNAPSHOTS``: disable snapshot generation when set to
       ``false``/``0`` to reduce I/O during short checks.
+
+    Snapshots are written every 10 time-integration steps when enabled.
     """
 
     env_nsteps = os.getenv("AFES_VENUS_JAX_SPINUP_STEPS")
@@ -275,6 +277,7 @@ def run_t42l60_venus_spinup(
         save_snapshot(mstate, step_idx=0)
     if nsteps is None:
         nsteps = int(5 * 86400 / cfg.dt)
+    snapshot_stride = 10
 
     for step_idx in range(1, nsteps + 1):
         time_seconds = (step_idx - 1) * cfg.dt
@@ -285,7 +288,7 @@ def run_t42l60_venus_spinup(
                 f"step {step_idx}: |u|={diag['max_u']:.2f} m/s, |v|={diag['max_v']:.2f} m/s, "
                 f"|T'|={diag['max_T_prime']:.2f} K, ps=[{diag['ps_range'][0]:.2e},{diag['ps_range'][1]:.2e}]"
             )
-        if save_snapshots and step_idx % int(12 * 3600 / cfg.dt) == 0:
+        if save_snapshots and step_idx % snapshot_stride == 0:
             save_snapshot(mstate, step_idx=step_idx)
 
     return mstate
