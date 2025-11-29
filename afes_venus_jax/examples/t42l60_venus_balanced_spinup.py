@@ -65,8 +65,8 @@ def balanced_random_initial_condition(seed: int = 0, wind_std: float = 5.0):
     # through spectral transforms. Use the final iteration's rescaled winds to
     # rebuild zeta/div so that both u and v land close to ``wind_std``.
     for _ in range(3):
-        u_target = _rescale(u_balanced)
-        v_target = _rescale(v_balanced)
+        u_target = _rescale(u_balanced, wind_std)
+        v_target = _rescale(v_balanced, wind_std)
         zeta_rescaled, div_rescaled = _vorticity_divergence(u_target, v_target)
         zeta_spec = sph.analysis_grid_to_spec(zeta_rescaled)
         div_spec = sph.analysis_grid_to_spec(div_rescaled)
